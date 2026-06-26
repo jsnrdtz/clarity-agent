@@ -1,39 +1,14 @@
 import {
-calculateGitHubScore
-} from "../scoring/github-score.js";
-
-import {
-discoverGitHubProject,
 type ProjectRepositoryMatch
 } from "../services/github-project-discovery.js";
 
 import {
-buildProjectGitHubMetrics,
 type ProjectCoreRepositoryMetrics
 } from "../services/project-github-metrics.js";
 
-function isApprovedCore(
-match: ProjectRepositoryMatch
-): boolean {
-if (match.role === "anchor") {
-return true;
-}
-
-return (
-match.role === "core-candidate" &&
-match.status === "verified-related" &&
-match.relationScore >= 80
-);
-}
-
-function isEcosystemRepository(
-match: ProjectRepositoryMatch
-): boolean {
-return (
-match.role === "component" ||
-match.role === "integration"
-);
-}
+import {
+calculateProjectScore
+} from "../services/project-score.js";
 
 function formatAge(
 days: number | null
@@ -53,6 +28,37 @@ return "1 day ago";
 return `${days} days ago`;
 }
 
+function getDaysSince(
+date: string | null
+): number | null {
+if (!date) {
+return null;
+}
+
+const timestamp =
+new Date(date).getTime();
+
+if (Number.isNaN(timestamp)) {
+return null;
+}
+
+return Math.max(
+0,
+Math.floor(
+(
+Date.now() -
+timestamp
+) /
+(
+24 *
+60 *
+60 *
+1000
+)
+)
+);
+}
+
 function formatCoreRepository(
 repository:
 ProjectCoreRepositoryMetrics,
@@ -67,25 +73,9 @@ return [
 `   Contributors: ${repository.data.activity.contributors}`,
 `   Stars: ${repository.data.stars}`,
 `   Last push: ${formatAge(
-      repository.data.pushedAt
-        ? Math.max(
-            0,
-            Math.floor(
-              (
-                Date.now() -
-                new Date(
-                  repository.data.pushedAt
-                ).getTime()
-              ) /
-                (
-                  24 *
-                  60 *
-                  60 *
-                  1000
-                )
-            )
-          )
-        : null
+      getDaysSince(
+        repository.data.pushedAt
+      )
     )}`,
 `   URL: ${repository.data.url}`
 ].join("\n");
@@ -113,63 +103,20 @@ brand: string,
 owner: string,
 anchorRepository: string
 ): Promise<string> {
-const discovery =
-await discoverGitHubProject(
+const result =
+await calculateProjectScore(
 brand,
 owner,
 anchorRepository
 );
 
-const coreMatches =
-discovery.related.filter(
-isApprovedCore
-);
-
-if (coreMatches.length === 0) {
-throw new Error(
-"No repositories were approved for the project core score."
-);
-}
-
-const projectMetrics =
-await buildProjectGitHubMetrics(
-brand,
-coreMatches.map((match) => ({
-owner:
-match.repository.owner,
-
-
-    repository:
-      match.repository.name,
-
-    role:
-      match.role,
-
-    relationScore:
-      match.relationScore,
-
-    isAnchor:
-      match.role === "anchor"
-  }))
-);
-
-
-const score =
-calculateGitHubScore(
-projectMetrics.aggregate
-);
-
-const ecosystem =
-discovery.related.filter(
-isEcosystemRepository
-);
-
-const excludedRelated =
-discovery.related.filter(
-(match) =>
-!isApprovedCore(match) &&
-!isEcosystemRepository(match)
-);
+const {
+discovery,
+score,
+metrics,
+ecosystem,
+excludedRelated
+} = result;
 
 const ecosystemRows =
 ecosystem.length > 0
@@ -195,11 +142,11 @@ return [
 `Release Discipline     ${score.releases}/100`,
 "",
 `Data Coverage          ${score.dataCoverage}%`,
-`Core repositories      ${projectMetrics.repositories.length}`,
+`Core repositories      ${metrics.repositories.length}`,
 `Ecosystem repositories ${ecosystem.length}`,
-`Raw commits in 30 days ${projectMetrics.rawCommitsLast30Days}`,
-`Adjusted activity      ${projectMetrics.adjustedCommitsLast30Days}`,
-`Unique contributors    ${projectMetrics.uniqueContributors}`,
+`Raw commits in 30 days ${metrics.rawCommitsLast30Days}`,
+`Adjusted activity      ${metrics.adjustedCommitsLast30Days}`,
+`Unique contributors    ${metrics.uniqueContributors}`,
 "",
 "Aggregation model:",
 "- Anchor activity is counted in full.",
@@ -210,7 +157,7 @@ return [
 "",
 "CORE SCORE REPOSITORIES",
 "",
-...projectMetrics.repositories.map(
+...metrics.repositories.map(
 formatCoreRepository
 ),
 "",

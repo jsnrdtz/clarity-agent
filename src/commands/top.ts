@@ -1,115 +1,175 @@
 import {
-  listRegisteredAgents,
-  type RegisteredAgent
+listRegisteredAgents,
+type RegisteredAgent
 } from "../data/agent-registry.js";
 
 import {
-  calculateGitHubScore,
-  type GitHubScoreBreakdown
-} from "../scoring/github-score.js";
-
-import {
-  getRepositoryData,
-  type GitHubRepositoryData
-} from "../services/github.js";
+calculateProjectScore,
+type ProjectScoreResult
+} from "../services/project-score.js";
 
 type RankedAgent = {
-  agent: RegisteredAgent;
-  repository: GitHubRepositoryData;
-  score: GitHubScoreBreakdown;
+agent: RegisteredAgent;
+result: ProjectScoreResult;
+};
+
+type FailedAgent = {
+agent: RegisteredAgent;
+reason: string;
 };
 
 async function rankAgent(
-  agent: RegisteredAgent
+agent: RegisteredAgent
 ): Promise<RankedAgent> {
-  const repository = await getRepositoryData(
-    agent.github.owner,
-    agent.github.repository
-  );
+const result =
+await calculateProjectScore(
+agent.name,
+agent.github.owner,
+agent.github.repository
+);
 
-  const score = calculateGitHubScore(repository);
-
-  return {
-    agent,
-    repository,
-    score
-  };
+return {
+agent,
+result
+};
 }
 
-function formatScope(
-  agent: RegisteredAgent
+function formatRankedAgent(
+item: RankedAgent,
+index: number
 ): string {
-  return agent.github.scope === "primary"
-    ? "primary"
-    : "component only";
+const {
+agent,
+result
+} = item;
+
+return [
+`#${index + 1}  ${agent.name}  ${result.score.overall}/100`,
+`     Activity: ${result.score.activity}/100`,
+`     Collaboration: ${result.score.collaboration}/100`,
+`     Adoption: ${result.score.adoption}/100`,
+`     Releases: ${result.score.releases}/100`,
+`     Core repositories: ${result.metrics.repositories.length}`,
+`     Ecosystem repositories: ${result.ecosystem.length}`,
+`     Unique contributors: ${result.metrics.uniqueContributors}`,
+`     Anchor: ${result.discovery.anchor.fullName}`
+].join("\n");
 }
 
-export async function getTopAgents(): Promise<string> {
-  const agents = listRegisteredAgents();
+export async function getTopAgents():
+Promise<string> {
+const agents =
+listRegisteredAgents();
 
-  if (agents.length === 0) {
-    return "No agents are registered.";
+if (agents.length === 0) {
+return "No agents are registered.";
+}
+
+const settled =
+await Promise.allSettled(
+agents.map(
+(agent) =>
+rankAgent(agent)
+)
+);
+
+const ranked: RankedAgent[] = [];
+const failed: FailedAgent[] = [];
+
+settled.forEach(
+(result, index) => {
+const agent =
+agents[index];
+
+
+  if (!agent) {
+    return;
   }
 
-  const results = await Promise.all(
-    agents.map((agent) => rankAgent(agent))
-  );
+  if (
+    result.status === "fulfilled"
+  ) {
+    ranked.push(
+      result.value
+    );
 
-  const ranked = results.sort(
-    (first, second) =>
-      second.score.overall - first.score.overall
-  );
+    return;
+  }
 
-  const rows = ranked.map(
-    ({ agent, repository, score }, index) => {
-      const position = `#${index + 1}`.padEnd(4);
-      const name = agent.name.padEnd(14);
-      const overall = String(
-        score.overall
-      ).padStart(3);
+  const reason =
+    result.reason instanceof Error
+      ? result.reason.message
+      : "Unknown error";
 
-      const activity = String(
-        score.activity
-      ).padStart(3);
+  failed.push({
+    agent,
+    reason
+  });
+}
 
-      const adoption = String(
-        score.adoption
-      ).padStart(3);
 
-      return [
-        `${position}${name} ${overall}/100`,
-        `     Activity: ${activity}  Adoption: ${adoption}`,
-        `     Commits: ${repository.activity.commitsLast30Days}`,
-        `     Scope: ${formatScope(agent)}`
-      ].join("\n");
-    }
-  );
+);
 
-  const incompleteAgents = ranked.filter(
-    ({ agent }) =>
-      agent.github.scope === "component"
-  );
+ranked.sort(
+(first, second) =>
+second.result.score.overall -
+first.result.score.overall
+);
 
-  const warning =
-    incompleteAgents.length > 0
-      ? [
-          "",
-          "Coverage warning:",
-          ...incompleteAgents.map(
-            ({ agent }) =>
-              `- ${agent.name} is currently measured using a component repository only.`
-          )
-        ]
-      : [];
+const rankingRows =
+ranked.length > 0
+? ranked
+.map(formatRankedAgent)
+.join("\n\n")
+: "No agents were scored successfully.";
 
-  return [
-    "CLARITY AGENT RANKING",
-    "GitHub data only — not a complete Clarity ranking",
-    "",
-    ...rows,
-    ...warning,
-    "",
-    `Agents analyzed: ${ranked.length}`,
-    `Collected: ${new Date().toISOString()}`
-  ].join("\n");
+const scopeWarnings =
+ranked
+.filter(
+({ agent }) =>
+agent.github.scope ===
+"component"
+)
+.map(
+({ agent }) =>
+`- ${agent.name} uses a component repository as its current anchor.`
+);
+
+const failedRows =
+failed.map(
+({ agent, reason }) =>
+`- ${agent.name}: ${reason}`
+);
+
+return [
+"CLARITY AGENT RANKING",
+"Project-level GitHub data only — not a complete Clarity ranking",
+"",
+rankingRows,
+"",
+`Agents ranked: ${ranked.length}`,
+`Agents failed: ${failed.length}`,
+"",
+...(scopeWarnings.length > 0
+? [
+"Coverage warnings:",
+...scopeWarnings,
+""
+]
+: []),
+...(failedRows.length > 0
+? [
+"Failed agents:",
+...failedRows,
+""
+]
+: []),
+"Ranking method:",
+"- Project repositories are discovered automatically.",
+"- Only approved core repositories affect the score.",
+"- Ecosystem repositories are shown but do not affect the score.",
+"- Contributors are deduplicated across core repositories.",
+"",
+`Collected: ${new Date().toISOString()}`
+].join("\n");
 }
