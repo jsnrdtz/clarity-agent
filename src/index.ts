@@ -27,6 +27,10 @@ rateAgent
 } from "./commands/rate.js";
 
 import {
+scoreProject
+} from "./commands/score-project.js";
+
+import {
 scoreRepository
 } from "./commands/score.js";
 
@@ -56,6 +60,7 @@ discover-github <owner>
 discover-related <owner> <anchor-repository>
 discover-project <brand> <owner> <anchor-repository>
 plan-project <brand> <owner> <anchor-repository>
+score-project <brand> <owner> <anchor-repository>
 github <owner> <repository>
 score <owner> <repository>
 compare-github <owner-one> <repo-one> <owner-two> <repo-two>
@@ -72,6 +77,8 @@ npm run dev -- discover-project PRXVT PRXVT sdk
 npm run dev -- discover-project Aeon aaronjmars aeon
 npm run dev -- plan-project PRXVT PRXVT sdk
 npm run dev -- plan-project Aeon aaronjmars aeon
+npm run dev -- score-project PRXVT PRXVT sdk
+npm run dev -- score-project Aeon aaronjmars aeon
 npm run dev -- github aaronjmars aeon
 npm run dev -- score PRXVT sdk
 npm run dev -- compare-github aaronjmars aeon PRXVT sdk
@@ -252,6 +259,34 @@ listRegisteredAgents();
 
     const result =
       await planProject(
+        brand,
+        owner,
+        anchorRepository
+      );
+
+    console.log(result);
+    break;
+  }
+
+  case "score-project": {
+    const [
+      brand,
+      owner,
+      anchorRepository
+    ] = args;
+
+    if (
+      !brand ||
+      !owner ||
+      !anchorRepository
+    ) {
+      throw new Error(
+        "Usage: score-project <brand> <owner> <anchor-repository>"
+      );
+    }
+
+    const result =
+      await scoreProject(
         brand,
         owner,
         anchorRepository
