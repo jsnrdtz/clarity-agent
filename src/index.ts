@@ -1,7 +1,22 @@
-import { compareAgents } from "./commands/compare.js";
-import { compareGitHubRepositories } from "./commands/compare-github.js";
-import { scoreRepository } from "./commands/score.js";
-import { getRepositoryData } from "./services/github.js";
+import {
+  compareAgents
+} from "./commands/compare.js";
+
+import {
+  compareGitHubRepositories
+} from "./commands/compare-github.js";
+
+import {
+  scoreRepository
+} from "./commands/score.js";
+
+import {
+  getRepositoryData
+} from "./services/github.js";
+
+import {
+  listRegisteredAgents
+} from "./data/agent-registry.js";
 
 function printUsage(): void {
   console.log(`
@@ -9,22 +24,33 @@ Clarity Agent v0.1
 
 Available commands:
 
+  agents
+
   compare <agent-one> <agent-two>
+
   github <owner> <repository>
+
   score <owner> <repository>
+
   compare-github <owner-one> <repo-one> <owner-two> <repo-two>
 
 Examples:
 
-  npm run dev -- compare aeon hermes
-  npm run dev -- github jsnrdtz clarity-agent
-  npm run dev -- score octokit octokit.js
-  npm run dev -- compare-github octokit octokit.js jsnrdtz clarity-agent
+  npm run dev -- agents
+
+  npm run dev -- compare aeon prxvt
+
+  npm run dev -- github aaronjmars aeon
+
+  npm run dev -- score PRXVT sdk
+
+  npm run dev -- compare-github aaronjmars aeon PRXVT sdk
 `);
 }
 
 async function main(): Promise<void> {
-  const [command, ...args] = process.argv.slice(2);
+  const [command, ...args] =
+    process.argv.slice(2);
 
   if (!command) {
     printUsage();
@@ -33,26 +59,61 @@ async function main(): Promise<void> {
 
   try {
     switch (command.toLowerCase()) {
-      case "compare": {
-        const [firstAgent, secondAgent] = args;
+      case "agents": {
+        const agents =
+          listRegisteredAgents();
 
-        if (!firstAgent || !secondAgent) {
+        console.log(
+          "REGISTERED CLARITY AGENTS\n"
+        );
+
+        for (const agent of agents) {
+          console.log(
+            `${agent.slug.padEnd(10)} ${agent.name}`
+          );
+
+          console.log(
+            `           GitHub: ${agent.github.owner}/${agent.github.repository}`
+          );
+
+          console.log(
+            `           Scope: ${agent.github.scope}\n`
+          );
+        }
+
+        break;
+      }
+
+      case "compare": {
+        const [
+          firstAgent,
+          secondAgent
+        ] = args;
+
+        if (
+          !firstAgent ||
+          !secondAgent
+        ) {
           throw new Error(
             "Usage: compare <agent-one> <agent-two>"
           );
         }
 
-        const result = compareAgents(
-          firstAgent,
-          secondAgent
-        );
+        const result =
+          await compareAgents(
+            firstAgent,
+            secondAgent
+          );
 
         console.log(result);
         break;
       }
 
       case "github": {
-        const [owner, repository] = args;
+        const [
+          owner,
+          repository
+        ] = args;
 
         if (!owner || !repository) {
           throw new Error(
@@ -60,17 +121,24 @@ async function main(): Promise<void> {
           );
         }
 
-        const data = await getRepositoryData(
-          owner,
-          repository
+        const data =
+          await getRepositoryData(
+            owner,
+            repository
+          );
+
+        console.log(
+          JSON.stringify(data, null, 2)
         );
 
-        console.log(JSON.stringify(data, null, 2));
         break;
       }
 
       case "score": {
-        const [owner, repository] = args;
+        const [
+          owner,
+          repository
+        ] = args;
 
         if (!owner || !repository) {
           throw new Error(
@@ -78,10 +146,11 @@ async function main(): Promise<void> {
           );
         }
 
-        const result = await scoreRepository(
-          owner,
-          repository
-        );
+        const result =
+          await scoreRepository(
+            owner,
+            repository
+          );
 
         console.log(result);
         break;
@@ -130,7 +199,10 @@ async function main(): Promise<void> {
         ? error.message
         : "Unknown error";
 
-    console.error(`Clarity error: ${message}`);
+    console.error(
+      `Clarity error: ${message}`
+    );
+
     process.exitCode = 1;
   }
 }
