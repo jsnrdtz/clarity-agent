@@ -1,0 +1,32 @@
+{
+  "name": "clarity-agent",
+  "version": "1.0.0",
+  "description": "Intelligence for the AI agent economy — discover, compare, and rank autonomous agents using verifiable data.",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jsnrdtz/clarity-agent.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/jsnrdtz/clarity-agent/issues"
+  },
+  "homepage": "https://github.com/jsnrdtz/clarity-agent#readme",
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
