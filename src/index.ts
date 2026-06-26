@@ -1,4 +1,5 @@
 import { compareAgents } from "./commands/compare.js";
+import { scoreRepository } from "./commands/score.js";
 import { getRepositoryData } from "./services/github.js";
 
 function printUsage(): void {
@@ -9,11 +10,13 @@ Available commands:
 
   compare <agent-one> <agent-two>
   github <owner> <repository>
+  score <owner> <repository>
 
 Examples:
 
   npm run dev -- compare aeon hermes
   npm run dev -- github jsnrdtz clarity-agent
+  npm run dev -- score octokit octokit.js
 `);
 }
 
@@ -22,7 +25,7 @@ async function main(): Promise<void> {
 
   if (!command) {
     printUsage();
-    process.exit(0);
+    return;
   }
 
   try {
@@ -36,7 +39,12 @@ async function main(): Promise<void> {
           );
         }
 
-        console.log(compareAgents(firstAgent, secondAgent));
+        const result = compareAgents(
+          firstAgent,
+          secondAgent
+        );
+
+        console.log(result);
         break;
       }
 
@@ -49,21 +57,47 @@ async function main(): Promise<void> {
           );
         }
 
-        const data = await getRepositoryData(owner, repository);
+        const data = await getRepositoryData(
+          owner,
+          repository
+        );
 
         console.log(JSON.stringify(data, null, 2));
         break;
       }
 
-      default:
-        throw new Error(`Unknown command: "${command}"`);
+      case "score": {
+        const [owner, repository] = args;
+
+        if (!owner || !repository) {
+          throw new Error(
+            "Usage: score <owner> <repository>"
+          );
+        }
+
+        const result = await scoreRepository(
+          owner,
+          repository
+        );
+
+        console.log(result);
+        break;
+      }
+
+      default: {
+        throw new Error(
+          `Unknown command: "${command}"`
+        );
+      }
     }
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Unknown error";
+      error instanceof Error
+        ? error.message
+        : "Unknown error";
 
     console.error(`Clarity error: ${message}`);
-    process.exit(1);
+    process.exitCode = 1;
   }
 }
 
