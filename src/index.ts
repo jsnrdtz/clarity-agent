@@ -1,4 +1,5 @@
 import { compareAgents } from "./commands/compare.js";
+import { compareGitHubRepositories } from "./commands/compare-github.js";
 import { scoreRepository } from "./commands/score.js";
 import { getRepositoryData } from "./services/github.js";
 
@@ -11,12 +12,14 @@ Available commands:
   compare <agent-one> <agent-two>
   github <owner> <repository>
   score <owner> <repository>
+  compare-github <owner-one> <repo-one> <owner-two> <repo-two>
 
 Examples:
 
   npm run dev -- compare aeon hermes
   npm run dev -- github jsnrdtz clarity-agent
   npm run dev -- score octokit octokit.js
+  npm run dev -- compare-github octokit octokit.js jsnrdtz clarity-agent
 `);
 }
 
@@ -79,6 +82,37 @@ async function main(): Promise<void> {
           owner,
           repository
         );
+
+        console.log(result);
+        break;
+      }
+
+      case "compare-github": {
+        const [
+          firstOwner,
+          firstRepository,
+          secondOwner,
+          secondRepository
+        ] = args;
+
+        if (
+          !firstOwner ||
+          !firstRepository ||
+          !secondOwner ||
+          !secondRepository
+        ) {
+          throw new Error(
+            "Usage: compare-github <owner-one> <repo-one> <owner-two> <repo-two>"
+          );
+        }
+
+        const result =
+          await compareGitHubRepositories(
+            firstOwner,
+            firstRepository,
+            secondOwner,
+            secondRepository
+          );
 
         console.log(result);
         break;
