@@ -1,9 +1,17 @@
 import { Octokit } from "octokit";
 
-const octokit = new Octokit();
+const githubToken = process.env.GITHUB_TOKEN;
+
+const octokit = new Octokit(
+  githubToken
+    ? {
+        auth: githubToken
+      }
+    : {}
+);
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
-const PAGE_LIMIT = 100;
+const PER_PAGE = 100;
 
 export type GitHubRepositoryData = {
   owner: string;
@@ -35,7 +43,9 @@ type GitHubApiError = {
   status?: number;
 };
 
-function isGitHubApiError(error: unknown): error is GitHubApiError {
+function isGitHubApiError(
+  error: unknown
+): error is GitHubApiError {
   return (
     typeof error === "object" &&
     error !== null &&
@@ -55,12 +65,107 @@ async function repositoryHasReadme(
 
     return true;
   } catch (error) {
-    if (isGitHubApiError(error) && error.status === 404) {
+    if (
+      isGitHubApiError(error) &&
+      error.status === 404
+    ) {
       return false;
     }
 
     throw error;
   }
+}
+
+async function getCommitsLast30Days(
+  owner: string,
+  repo: string,
+  since: string
+): Promise<number> {
+  try {
+    const commits = await octokit.paginate(
+      octokit.rest.repos.listCommits,
+      {
+        owner,
+        repo,
+        since,
+        per_page: PER_PAGE
+      }
+    );
+
+    return commits.length;
+  } catch (error) {
+    if (
+      isGitHubApiError(error) &&
+      error.status === 409
+    ) {
+      return 0;
+    }
+
+    throw error;
+  }
+}
+
+async function getContributorCount(
+  owner: string,
+  repo: string
+): Promise<number> {
+  const contributors = await octokit.paginate(
+    octokit.rest.repos.listContributors,
+    {
+      owner,
+      repo,
+      per_page: PER_PAGE
+    }
+  );
+
+  return contributors.length;
+}
+
+async function getReleaseData(
+  owner: string,
+  repo: string,
+  ninetyDaysAgoTimestamp: number
+): Promise<{
+  releasesLast90Days: number;
+  latestReleaseAt: string | null;
+}> {
+  const releases = await octokit.paginate(
+    octokit.rest.repos.listReleases,
+    {
+      owner,
+      repo,
+      per_page: PER_PAGE
+    }
+  );
+
+  const releaseDates = releases
+    .map(
+      (release) =>
+        release.published_at ??
+        release.created_at
+    )
+    .filter(
+      (date): date is string =>
+        typeof date === "string"
+    )
+    .sort(
+      (first, second) =>
+        new Date(second).getTime() -
+        new Date(first).getTime()
+    );
+
+  const releasesLast90Days =
+    releaseDates.filter(
+      (date) =>
+        new Date(date).getTime() >=
+        ninetyDaysAgoTimestamp
+    ).length;
+
+  return {
+    releasesLast90Days,
+    latestReleaseAt:
+      releaseDates[0] ?? null
+  };
 }
 
 export async function getRepositoryData(
@@ -78,9 +183,9 @@ export async function getRepositoryData(
 
   const [
     repositoryResponse,
-    commitsResponse,
-    contributorsResponse,
-    releasesResponse,
+    commitsLast30Days,
+    contributors,
+    releaseData,
     hasReadme
   ] = await Promise.all([
     octokit.rest.repos.get({
@@ -88,81 +193,71 @@ export async function getRepositoryData(
       repo
     }),
 
-    octokit.rest.repos.listCommits({
+    getCommitsLast30Days(
       owner,
       repo,
-      since: thirtyDaysAgo,
-      per_page: PAGE_LIMIT
-    }),
+      thirtyDaysAgo
+    ),
 
-    octokit.rest.repos.listContributors({
+    getContributorCount(
+      owner,
+      repo
+    ),
+
+    getReleaseData(
       owner,
       repo,
-      per_page: PAGE_LIMIT
-    }),
+      ninetyDaysAgoTimestamp
+    ),
 
-    octokit.rest.repos.listReleases({
+    repositoryHasReadme(
       owner,
-      repo,
-      per_page: PAGE_LIMIT
-    }),
-
-    repositoryHasReadme(owner, repo)
+      repo
+    )
   ]);
 
-  const repository = repositoryResponse.data;
-  const releases = releasesResponse.data;
-
-  const releasesLast90Days = releases.filter((release) => {
-    const releaseDate =
-      release.published_at ?? release.created_at;
-
-    return (
-      new Date(releaseDate).getTime() >=
-      ninetyDaysAgoTimestamp
-    );
-  }).length;
-
-  const latestReleaseAt =
-    releases
-      .map(
-        (release) =>
-          release.published_at ?? release.created_at
-      )
-      .sort(
-        (first, second) =>
-          new Date(second).getTime() -
-          new Date(first).getTime()
-      )[0] ?? null;
+  const repository =
+    repositoryResponse.data;
 
   return {
     owner: repository.owner.login,
     name: repository.name,
-    description: repository.description,
-    stars: repository.stargazers_count,
-    forks: repository.forks_count,
-    openIssues: repository.open_issues_count,
-    language: repository.language,
-    defaultBranch: repository.default_branch,
-    createdAt: repository.created_at,
-    updatedAt: repository.updated_at,
-    pushedAt: repository.pushed_at,
-    url: repository.html_url,
+    description:
+      repository.description,
+    stars:
+      repository.stargazers_count,
+    forks:
+      repository.forks_count,
+    openIssues:
+      repository.open_issues_count,
+    language:
+      repository.language,
+    defaultBranch:
+      repository.default_branch,
+    createdAt:
+      repository.created_at,
+    updatedAt:
+      repository.updated_at,
+    pushedAt:
+      repository.pushed_at,
+    url:
+      repository.html_url,
 
     activity: {
-      commitsLast30Days: commitsResponse.data.length,
-      commitsCapped:
-        commitsResponse.data.length === PAGE_LIMIT,
+      commitsLast30Days,
+      commitsCapped: false,
 
-      contributors: contributorsResponse.data.length,
-      contributorsCapped:
-        contributorsResponse.data.length === PAGE_LIMIT,
+      contributors,
+      contributorsCapped: false,
 
-      releasesLast90Days,
-      releasesCapped:
-        releasesResponse.data.length === PAGE_LIMIT,
+      releasesLast90Days:
+        releaseData.releasesLast90Days,
 
-      latestReleaseAt,
+      releasesCapped: false,
+
+      latestReleaseAt:
+        releaseData.latestReleaseAt,
+
       hasReadme
     }
   };
