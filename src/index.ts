@@ -19,6 +19,10 @@ discoverRelated
 } from "./commands/discover-related.js";
 
 import {
+planProject
+} from "./commands/plan-project.js";
+
+import {
 rateAgent
 } from "./commands/rate.js";
 
@@ -51,6 +55,7 @@ compare <agent-one> <agent-two>
 discover-github <owner>
 discover-related <owner> <anchor-repository>
 discover-project <brand> <owner> <anchor-repository>
+plan-project <brand> <owner> <anchor-repository>
 github <owner> <repository>
 score <owner> <repository>
 compare-github <owner-one> <repo-one> <owner-two> <repo-two>
@@ -65,6 +70,8 @@ npm run dev -- discover-github PRXVT
 npm run dev -- discover-related aaronjmars aeon
 npm run dev -- discover-project PRXVT PRXVT sdk
 npm run dev -- discover-project Aeon aaronjmars aeon
+npm run dev -- plan-project PRXVT PRXVT sdk
+npm run dev -- plan-project Aeon aaronjmars aeon
 npm run dev -- github aaronjmars aeon
 npm run dev -- score PRXVT sdk
 npm run dev -- compare-github aaronjmars aeon PRXVT sdk
@@ -85,6 +92,7 @@ switch (command.toLowerCase()) {
 case "agents": {
 const agents =
 listRegisteredAgents();
+
 
     console.log(
       "REGISTERED CLARITY AGENTS\n"
@@ -225,6 +233,34 @@ listRegisteredAgents();
     break;
   }
 
+  case "plan-project": {
+    const [
+      brand,
+      owner,
+      anchorRepository
+    ] = args;
+
+    if (
+      !brand ||
+      !owner ||
+      !anchorRepository
+    ) {
+      throw new Error(
+        "Usage: plan-project <brand> <owner> <anchor-repository>"
+      );
+    }
+
+    const result =
+      await planProject(
+        brand,
+        owner,
+        anchorRepository
+      );
+
+    console.log(result);
+    break;
+  }
+
   case "github": {
     const [
       owner,
@@ -310,17 +346,20 @@ listRegisteredAgents();
   }
 }
 
+
 } catch (error) {
 const message =
 error instanceof Error
 ? error.message
 : "Unknown error";
 
+
 console.error(
   `Clarity error: ${message}`
 );
 
 process.exitCode = 1;
+
 
 }
 }
