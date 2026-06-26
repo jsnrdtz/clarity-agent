@@ -7,6 +7,10 @@ import {
 } from "./commands/compare-github.js";
 
 import {
+  rateAgent
+} from "./commands/rate.js";
+
+import {
   scoreRepository
 } from "./commands/score.js";
 
@@ -26,6 +30,8 @@ Available commands:
 
   agents
 
+  rate <agent>
+
   compare <agent-one> <agent-two>
 
   github <owner> <repository>
@@ -37,6 +43,10 @@ Available commands:
 Examples:
 
   npm run dev -- agents
+
+  npm run dev -- rate aeon
+
+  npm run dev -- rate prxvt
 
   npm run dev -- compare aeon prxvt
 
@@ -60,8 +70,7 @@ async function main(): Promise<void> {
   try {
     switch (command.toLowerCase()) {
       case "agents": {
-        const agents =
-          listRegisteredAgents();
+        const agents = listRegisteredAgents();
 
         console.log(
           "REGISTERED CLARITY AGENTS\n"
@@ -84,6 +93,21 @@ async function main(): Promise<void> {
         break;
       }
 
+      case "rate": {
+        const [agentSlug] = args;
+
+        if (!agentSlug) {
+          throw new Error(
+            "Usage: rate <agent>"
+          );
+        }
+
+        const result = await rateAgent(agentSlug);
+
+        console.log(result);
+        break;
+      }
+
       case "compare": {
         const [
           firstAgent,
@@ -99,11 +123,10 @@ async function main(): Promise<void> {
           );
         }
 
-        const result =
-          await compareAgents(
-            firstAgent,
-            secondAgent
-          );
+        const result = await compareAgents(
+          firstAgent,
+          secondAgent
+        );
 
         console.log(result);
         break;
@@ -121,11 +144,10 @@ async function main(): Promise<void> {
           );
         }
 
-        const data =
-          await getRepositoryData(
-            owner,
-            repository
-          );
+        const data = await getRepositoryData(
+          owner,
+          repository
+        );
 
         console.log(
           JSON.stringify(data, null, 2)
@@ -146,11 +168,10 @@ async function main(): Promise<void> {
           );
         }
 
-        const result =
-          await scoreRepository(
-            owner,
-            repository
-          );
+        const result = await scoreRepository(
+          owner,
+          repository
+        );
 
         console.log(result);
         break;
