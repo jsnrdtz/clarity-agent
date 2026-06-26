@@ -1,4 +1,5 @@
 import { compareAgents } from "./commands/compare.js";
+import { getRepositoryData } from "./services/github.js";
 
 function printUsage(): void {
   console.log(`
@@ -7,15 +8,16 @@ Clarity Agent v0.1
 Available commands:
 
   compare <agent-one> <agent-two>
+  github <owner> <repository>
 
 Examples:
 
   npm run dev -- compare aeon hermes
-  npm run dev -- compare clawbank aeon
+  npm run dev -- github jsnrdtz clarity-agent
 `);
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
 
   if (!command) {
@@ -38,6 +40,21 @@ function main(): void {
         break;
       }
 
+      case "github": {
+        const [owner, repository] = args;
+
+        if (!owner || !repository) {
+          throw new Error(
+            "Usage: github <owner> <repository>"
+          );
+        }
+
+        const data = await getRepositoryData(owner, repository);
+
+        console.log(JSON.stringify(data, null, 2));
+        break;
+      }
+
       default:
         throw new Error(`Unknown command: "${command}"`);
     }
@@ -50,4 +67,4 @@ function main(): void {
   }
 }
 
-main();
+await main();
