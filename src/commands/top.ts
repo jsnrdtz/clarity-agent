@@ -1,175 +1,265 @@
 import {
-listRegisteredAgents,
-type RegisteredAgent
+  getAgentEvidenceProfile
+} from "../data/agent-evidence.js";
+
+import {
+  listRegisteredAgents,
+  type RegisteredAgent
 } from "../data/agent-registry.js";
 
 import {
-calculateProjectScore,
-type ProjectScoreResult
+  assessPublicEvidence,
+  type PublicEvidenceAssessment
+} from "../services/public-evidence.js";
+
+import {
+  calculateProjectScore,
+  type ProjectScoreResult
 } from "../services/project-score.js";
 
-type RankedAgent = {
-agent: RegisteredAgent;
-result: ProjectScoreResult;
+type EvaluatedAgent = {
+  agent: RegisteredAgent;
+  result: ProjectScoreResult;
+  evidence: PublicEvidenceAssessment;
 };
 
 type FailedAgent = {
-agent: RegisteredAgent;
-reason: string;
+  agent: RegisteredAgent;
+  reason: string;
 };
 
-async function rankAgent(
-agent: RegisteredAgent
-): Promise<RankedAgent> {
-const result =
-await calculateProjectScore(
-agent.name,
-agent.github.owner,
-agent.github.repository
-);
+async function evaluateAgent(
+  agent: RegisteredAgent
+): Promise<EvaluatedAgent> {
+  const profile =
+    getAgentEvidenceProfile(
+      agent.slug
+    );
 
-return {
-agent,
-result
-};
+  const evidence =
+    assessPublicEvidence(
+      agent,
+      profile
+    );
+
+  const result =
+    await calculateProjectScore(
+      agent.name,
+      agent.github.owner,
+      agent.github.repository
+    );
+
+  return {
+    agent,
+    result,
+    evidence
+  };
 }
 
 function formatRankedAgent(
-item: RankedAgent,
-index: number
+  item: EvaluatedAgent,
+  index: number
 ): string {
-const {
-agent,
-result
-} = item;
+  const {
+    agent,
+    result,
+    evidence
+  } = item;
 
-return [
-`#${index + 1}  ${agent.name}  ${result.score.overall}/100`,
-`     Activity: ${result.score.activity}/100`,
-`     Collaboration: ${result.score.collaboration}/100`,
-`     Adoption: ${result.score.adoption}/100`,
-`     Releases: ${result.score.releases}/100`,
-`     Core repositories: ${result.metrics.repositories.length}`,
-`     Ecosystem repositories: ${result.ecosystem.length}`,
-`     Unique contributors: ${result.metrics.uniqueContributors}`,
-`     Anchor: ${result.discovery.anchor.fullName}`
-].join("\n");
+  return [
+    `#${index + 1}  ${agent.name}  ${result.score.overall}/100`,
+    `     Activity: ${result.score.activity}/100`,
+    `     Collaboration: ${result.score.collaboration}/100`,
+    `     Adoption: ${result.score.adoption}/100`,
+    `     Releases: ${result.score.releases}/100`,
+    `     Evidence coverage: ${evidence.coverage}/100`,
+    `     Rating confidence: ${evidence.confidence}`,
+    `     Core repositories: ${result.metrics.repositories.length}`,
+    `     Ecosystem repositories: ${result.ecosystem.length}`,
+    `     Unique contributors: ${result.metrics.uniqueContributors}`,
+    `     Anchor: ${result.discovery.anchor.fullName}`
+  ].join("\n");
+}
+
+function formatLimitedEvidenceAgent(
+  item: EvaluatedAgent,
+  index: number
+): string {
+  const {
+    agent,
+    result,
+    evidence
+  } = item;
+
+  return [
+    `${index + 1}. ${agent.name}`,
+    `   Observed public GitHub score: ${result.score.overall}/100`,
+    `   Public evidence coverage: ${evidence.coverage}/100`,
+    `   Rating confidence: ${evidence.confidence}`,
+    "   Ranking status: not ranked",
+    `   Reason: ${evidence.interpretation}`,
+    `   Anchor: ${result.discovery.anchor.fullName}`
+  ].join("\n");
 }
 
 export async function getTopAgents():
-Promise<string> {
-const agents =
-listRegisteredAgents();
+  Promise<string> {
+  const agents =
+    listRegisteredAgents();
 
-if (agents.length === 0) {
-return "No agents are registered.";
-}
-
-const settled =
-await Promise.allSettled(
-agents.map(
-(agent) =>
-rankAgent(agent)
-)
-);
-
-const ranked: RankedAgent[] = [];
-const failed: FailedAgent[] = [];
-
-settled.forEach(
-(result, index) => {
-const agent =
-agents[index];
-
-
-  if (!agent) {
-    return;
+  if (agents.length === 0) {
+    return "No agents are registered.";
   }
 
-  if (
-    result.status === "fulfilled"
-  ) {
-    ranked.push(
-      result.value
+  const settled =
+    await Promise.allSettled(
+      agents.map(
+        (agent) =>
+          evaluateAgent(agent)
+      )
     );
 
-    return;
-  }
+  const evaluated:
+    EvaluatedAgent[] = [];
 
-  const reason =
-    result.reason instanceof Error
-      ? result.reason.message
-      : "Unknown error";
+  const failed:
+    FailedAgent[] = [];
 
-  failed.push({
-    agent,
-    reason
-  });
-}
+  settled.forEach(
+    (result, index) => {
+      const agent =
+        agents[index];
 
+      if (!agent) {
+        return;
+      }
 
-);
+      if (
+        result.status === "fulfilled"
+      ) {
+        evaluated.push(
+          result.value
+        );
 
-ranked.sort(
-(first, second) =>
-second.result.score.overall -
-first.result.score.overall
-);
+        return;
+      }
 
-const rankingRows =
-ranked.length > 0
-? ranked
-.map(formatRankedAgent)
-.join("\n\n")
-: "No agents were scored successfully.";
+      const reason =
+        result.reason instanceof Error
+          ? result.reason.message
+          : "Unknown error";
 
-const scopeWarnings =
-ranked
-.filter(
-({ agent }) =>
-agent.github.scope ===
-"component"
-)
-.map(
-({ agent }) =>
-`- ${agent.name} uses a component repository as its current anchor.`
-);
+      failed.push({
+        agent,
+        reason
+      });
+    }
+  );
 
-const failedRows =
-failed.map(
-({ agent, reason }) =>
-`- ${agent.name}: ${reason}`
-);
+  const ranked =
+    evaluated
+      .filter(
+        (item) =>
+          item.evidence.confidence !==
+          "low"
+      )
+      .sort(
+        (first, second) =>
+          second.result.score.overall -
+          first.result.score.overall
+      );
 
-return [
-"CLARITY AGENT RANKING",
-"Project-level GitHub data only — not a complete Clarity ranking",
-"",
-rankingRows,
-"",
-`Agents ranked: ${ranked.length}`,
-`Agents failed: ${failed.length}`,
-"",
-...(scopeWarnings.length > 0
-? [
-"Coverage warnings:",
-...scopeWarnings,
-""
-]
-: []),
-...(failedRows.length > 0
-? [
-"Failed agents:",
-...failedRows,
-""
-]
-: []),
-"Ranking method:",
-"- Project repositories are discovered automatically.",
-"- Only approved core repositories affect the score.",
-"- Ecosystem repositories are shown but do not affect the score.",
-"- Contributors are deduplicated across core repositories.",
-"",
-`Collected: ${new Date().toISOString()}`
-].join("\n");
+  const limitedEvidence =
+    evaluated
+      .filter(
+        (item) =>
+          item.evidence.confidence ===
+          "low"
+      )
+      .sort(
+        (first, second) =>
+          second.evidence.coverage -
+          first.evidence.coverage
+      );
+
+  const rankingRows =
+    ranked.length > 0
+      ? ranked
+          .map(formatRankedAgent)
+          .join("\n\n")
+      : (
+          "No projects currently have enough public evidence for ranking."
+        );
+
+  const limitedRows =
+    limitedEvidence.length > 0
+      ? limitedEvidence
+          .map(
+            formatLimitedEvidenceAgent
+          )
+          .join("\n\n")
+      : (
+          "No projects have insufficient public evidence."
+        );
+
+  const scopeWarnings =
+    evaluated
+      .filter(
+        ({ agent }) =>
+          agent.github.scope ===
+          "component"
+      )
+      .map(
+        ({ agent }) =>
+          `- ${agent.name} uses a component repository as its current anchor.`
+      );
+
+  const failedRows =
+    failed.map(
+      ({ agent, reason }) =>
+        `- ${agent.name}: ${reason}`
+    );
+
+  return [
+    "CLARITY AGENT RANKING",
+    "Public GitHub evidence only — not a complete quality ranking",
+    "",
+    "RANKED PROJECTS",
+    "Only projects with medium or high evidence confidence receive a ranking position.",
+    "",
+    rankingRows,
+    "",
+    "INSUFFICIENT PUBLIC EVIDENCE",
+    "Observed scores are displayed, but these projects are not ranked.",
+    "",
+    limitedRows,
+    "",
+    `Agents evaluated: ${evaluated.length}`,
+    `Agents ranked: ${ranked.length}`,
+    `Agents not ranked: ${limitedEvidence.length}`,
+    `Agents failed: ${failed.length}`,
+    "",
+    ...(scopeWarnings.length > 0
+      ? [
+          "Coverage warnings:",
+          ...scopeWarnings,
+          ""
+        ]
+      : []),
+    ...(failedRows.length > 0
+      ? [
+          "Failed agents:",
+          ...failedRows,
+          ""
+        ]
+      : []),
+    "Ranking method:",
+    "- Project repositories are discovered automatically.",
+    "- Only approved core repositories affect the observed GitHub score.",
+    "- Public Evidence Coverage measures how representative the visible data may be.",
+    "- Low-confidence projects are displayed separately instead of receiving a ranking position.",
+    "- Low evidence coverage is not treated as low project quality.",
+    "",
+    `Collected: ${new Date().toISOString()}`
+  ].join("\n");
 }
