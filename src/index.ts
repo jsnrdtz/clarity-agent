@@ -1,4 +1,8 @@
 import {
+  runRefreshCommand
+} from "./commands/refresh.js";
+
+import {
   evaluateAgentJson
 } from "./commands/evaluate.js";
 
@@ -60,6 +64,7 @@ Clarity Agent v0.2
 
 Available commands:
 
+refresh [--json]
 agents
 top
 rate <agent>
@@ -77,6 +82,8 @@ compare-github <owner-one> <repo-one> <owner-two> <repo-two>
 
 Examples:
 
+npm run dev -- refresh
+npm run dev -- refresh --json
 npm run dev -- agents
 npm run dev -- top
 npm run dev -- rate aeon
@@ -109,6 +116,42 @@ return;
 
 try {
 switch (command.toLowerCase()) {
+      case "refresh": {
+        const [
+          formatFlag,
+          ...extraArguments
+        ] = args;
+
+        if (
+          extraArguments.length > 0 ||
+          (
+            formatFlag &&
+            formatFlag !== "--json"
+          )
+        ) {
+          throw new Error(
+            "Usage: refresh [--json]"
+          );
+        }
+
+        const result =
+          await runRefreshCommand(
+            formatFlag === "--json"
+          );
+
+        console.log(
+          result.output
+        );
+
+        if (
+          result.hasFailures
+        ) {
+          process.exitCode = 1;
+        }
+
+        break;
+      }
+
 
       case "evaluate": {
         const [
