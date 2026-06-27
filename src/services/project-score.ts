@@ -14,6 +14,10 @@ import {
   type ProjectGitHubMetrics
 } from "./project-github-metrics.js";
 
+import {
+  TtlPromiseCache
+} from "./ttl-promise-cache.js";
+
 export type ProjectScoreResult = {
   discovery: GitHubProjectDiscovery;
   score: GitHubScoreBreakdown;
@@ -23,11 +27,39 @@ export type ProjectScoreResult = {
   excludedRelated: ProjectRepositoryMatch[];
 };
 
+const DEFAULT_CACHE_TTL_MS =
+  10 * 60 * 1000;
+
+function getCacheTtlMs(): number {
+  const rawValue =
+    process.env.CLARITY_CACHE_TTL_MS;
+
+  if (!rawValue) {
+    return DEFAULT_CACHE_TTL_MS;
+  }
+
+  const parsedValue =
+    Number(rawValue);
+
+  if (
+    !Number.isInteger(parsedValue) ||
+    parsedValue < 1
+  ) {
+    throw new Error(
+      `Invalid CLARITY_CACHE_TTL_MS value: "${rawValue}"`
+    );
+  }
+
+  return parsedValue;
+}
+
+const projectScoreCacheTtlMs =
+  getCacheTtlMs();
+
 const projectScoreCache =
-  new Map<
-    string,
-    Promise<ProjectScoreResult>
-  >();
+  new TtlPromiseCache<ProjectScoreResult>(
+    projectScoreCacheTtlMs
+  );
 
 function getCacheKey(
   brand: string,
@@ -41,7 +73,9 @@ function getCacheKey(
   ]
     .map(
       (value) =>
-        value.trim().toLowerCase()
+        value
+          .trim()
+          .toLowerCase()
     )
     .join(":");
 }
@@ -84,20 +118,26 @@ async function calculateProjectScoreUncached(
   const coreMatches =
     discovery.related
       .filter(isApprovedCore)
-      .sort((first, second) => {
-        if (first.role === "anchor") {
-          return -1;
-        }
+      .sort(
+        (first, second) => {
+          if (
+            first.role === "anchor"
+          ) {
+            return -1;
+          }
 
-        if (second.role === "anchor") {
-          return 1;
-        }
+          if (
+            second.role === "anchor"
+          ) {
+            return 1;
+          }
 
-        return (
-          second.relationScore -
-          first.relationScore
-        );
-      });
+          return (
+            second.relationScore -
+            first.relationScore
+          );
+        }
+      );
 
   if (coreMatches.length === 0) {
     throw new Error(
@@ -108,22 +148,25 @@ async function calculateProjectScoreUncached(
   const metrics =
     await buildProjectGitHubMetrics(
       brand,
-      coreMatches.map((match) => ({
-        owner:
-          match.repository.owner,
 
-        repository:
-          match.repository.name,
+      coreMatches.map(
+        (match) => ({
+          owner:
+            match.repository.owner,
 
-        role:
-          match.role,
+          repository:
+            match.repository.name,
 
-        relationScore:
-          match.relationScore,
+          role:
+            match.role,
 
-        isAnchor:
-          match.role === "anchor"
-      }))
+          relationScore:
+            match.relationScore,
+
+          isAnchor:
+            match.role === "anchor"
+        })
+      )
     );
 
   const score =
@@ -165,32 +208,34 @@ export function calculateProjectScore(
       anchorRepository
     );
 
-  const cached =
-    projectScoreCache.get(
-      cacheKey
-    );
-
-  if (cached) {
-    return cached;
-  }
-
-  const resultPromise =
-    calculateProjectScoreUncached(
-      brand,
-      owner,
-      anchorRepository
-    );
-
-  projectScoreCache.set(
+  return projectScoreCache.getOrCreate(
     cacheKey,
-    resultPromise
+
+    () =>
+      calculateProjectScoreUncached(
+        brand,
+        owner,
+        anchorRepository
+      )
   );
+}
 
-  resultPromise.catch(() => {
-    projectScoreCache.delete(
-      cacheKey
-    );
-  });
+export function clearProjectScoreCache():
+void {
+  projectScoreCache.clear();
+}
 
-  return resultPromise;
+export function getProjectScoreCacheStatus(): {
+  strategy: "in-memory-ttl";
+  ttlMs: number;
+  entries: number;
+} {
+  return {
+    strategy: "in-memory-ttl",
+    ttlMs:
+      projectScoreCacheTtlMs,
+
+    entries:
+      projectScoreCache.size
+  };
 }
