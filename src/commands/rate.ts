@@ -1,6 +1,15 @@
 import {
+getAgentEvidenceProfile
+} from "../data/agent-evidence.js";
+
+import {
 findRegisteredAgent
 } from "../data/agent-registry.js";
+
+import {
+assessPublicEvidence,
+formatPublicEvidenceAssessment
+} from "../services/public-evidence.js";
 
 import {
 scoreProject
@@ -25,8 +34,29 @@ agent.github.owner,
 agent.github.repository
 );
 
-return projectReport.replace(
+const evidenceProfile =
+getAgentEvidenceProfile(
+agent.slug
+);
+
+const evidenceAssessment =
+assessPublicEvidence(
+agent,
+evidenceProfile
+);
+
+const evidenceReport =
+formatPublicEvidenceAssessment(
+evidenceAssessment,
+evidenceProfile.note
+);
+
+return [
+projectReport.replace(
 "CLARITY PROJECT GITHUB SCORE",
 "CLARITY AGENT GITHUB REPORT"
-);
+),
+"",
+evidenceReport
+].join("\n");
 }
