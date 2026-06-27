@@ -10,6 +10,7 @@ import type {
 } from "./agent-evaluation.js";
 
 import {
+  getAgentEvaluation,
   resolveAgentEvaluation,
   type AgentEvaluationSnapshot
 } from "./evaluation-snapshot.js";
@@ -299,6 +300,144 @@ test(
     assert.strictEqual(
       result.evaluation,
       evaluation
+    );
+  }
+);
+
+test(
+  "uses a recent snapshot without building a live evaluation",
+  async () => {
+    const snapshotEvaluation =
+      createEvaluation(
+        "snapshot-agent"
+      );
+
+    let liveEvaluationCalls =
+      0;
+
+    const evaluation =
+      await getAgentEvaluation(
+        "snapshot-agent",
+        {
+          loadSnapshot:
+            async () => ({
+              schemaVersion: "1.0",
+
+              savedAt:
+                "2026-06-27T04:00:00.000Z",
+
+              evaluation:
+                snapshotEvaluation
+            }),
+
+          resolveLiveEvaluation:
+            async () => {
+              liveEvaluationCalls +=
+                1;
+
+              return {
+                evaluation:
+                  createEvaluation(
+                    "live-agent"
+                  ),
+
+                delivery: {
+                  source: "live",
+                  stale: false,
+                  snapshotSavedAt: null,
+                  liveError: null
+                }
+              };
+            },
+
+          now:
+            () =>
+              new Date(
+                "2026-06-27T06:00:00.000Z"
+              ).getTime(),
+
+          maxAgeMs:
+            6 * 60 * 60 * 1000
+        }
+      );
+
+    assert.strictEqual(
+      evaluation,
+      snapshotEvaluation
+    );
+
+    assert.equal(
+      liveEvaluationCalls,
+      0
+    );
+  }
+);
+
+test(
+  "refreshes an expired ranking snapshot",
+  async () => {
+    const liveEvaluation =
+      createEvaluation(
+        "live-agent"
+      );
+
+    let liveEvaluationCalls =
+      0;
+
+    const evaluation =
+      await getAgentEvaluation(
+        "aeon",
+        {
+          loadSnapshot:
+            async () => ({
+              schemaVersion: "1.0",
+
+              savedAt:
+                "2026-06-27T00:00:00.000Z",
+
+              evaluation:
+                createEvaluation(
+                  "snapshot-agent"
+                )
+            }),
+
+          resolveLiveEvaluation:
+            async () => {
+              liveEvaluationCalls +=
+                1;
+
+              return {
+                evaluation:
+                  liveEvaluation,
+
+                delivery: {
+                  source: "live",
+                  stale: false,
+                  snapshotSavedAt: null,
+                  liveError: null
+                }
+              };
+            },
+
+          now:
+            () =>
+              new Date(
+                "2026-06-27T07:00:00.000Z"
+              ).getTime(),
+
+          maxAgeMs:
+            6 * 60 * 60 * 1000
+        }
+      );
+
+    assert.strictEqual(
+      evaluation,
+      liveEvaluation
+    );
+
+    assert.equal(
+      liveEvaluationCalls,
+      1
     );
   }
 );

@@ -361,13 +361,135 @@ export async function resolveAgentEvaluation(
   }
 }
 
-export async function getAgentEvaluation(
-  agentSlug: string
-): Promise<AgentEvaluation> {
-  const resolved =
-    await resolveAgentEvaluation(
-      agentSlug
+const DEFAULT_RANKING_SNAPSHOT_MAX_AGE_MS =
+  6 * 60 * 60 * 1000;
+
+type RecentEvaluationDependencies = {
+  loadSnapshot: (
+    agentSlug: string
+  ) => Promise<AgentEvaluationSnapshot | null>;
+
+  resolveLiveEvaluation: (
+    agentSlug: string
+  ) => Promise<ResolvedAgentEvaluation>;
+
+  now: () => number;
+  maxAgeMs: number;
+};
+
+function getRankingSnapshotMaxAgeMs():
+number {
+  const rawValue =
+    process.env
+      .CLARITY_RANKING_SNAPSHOT_MAX_AGE_MS;
+
+  if (!rawValue) {
+    return (
+      DEFAULT_RANKING_SNAPSHOT_MAX_AGE_MS
     );
+  }
+
+  const parsedValue =
+    Number(rawValue);
+
+  if (
+    !Number.isFinite(parsedValue) ||
+    parsedValue < 0
+  ) {
+    return (
+      DEFAULT_RANKING_SNAPSHOT_MAX_AGE_MS
+    );
+  }
+
+  return parsedValue;
+}
+
+function resolveRecentEvaluationDependencies(
+  overrides:
+    Partial<RecentEvaluationDependencies>
+): RecentEvaluationDependencies {
+  return {
+    loadSnapshot:
+      loadAgentEvaluationSnapshot,
+
+    resolveLiveEvaluation:
+      resolveAgentEvaluation,
+
+    now:
+      () => Date.now(),
+
+    maxAgeMs:
+      getRankingSnapshotMaxAgeMs(),
+
+    ...overrides
+  };
+}
+
+function isRecentSnapshot(
+  snapshot:
+    AgentEvaluationSnapshot,
+
+  now: number,
+  maxAgeMs: number
+): boolean {
+  const savedAt =
+    new Date(
+      snapshot.savedAt
+    ).getTime();
+
+  if (
+    !Number.isFinite(savedAt)
+  ) {
+    return false;
+  }
+
+  const age =
+    now - savedAt;
+
+  return (
+    age >= 0 &&
+    age <= maxAgeMs
+  );
+}
+
+export async function getAgentEvaluation(
+  agentSlug: string,
+
+  dependencyOverrides:
+    Partial<RecentEvaluationDependencies> = {}
+): Promise<AgentEvaluation> {
+  const dependencies =
+    resolveRecentEvaluationDependencies(
+      dependencyOverrides
+    );
+
+  try {
+    const snapshot =
+      await dependencies
+        .loadSnapshot(
+          agentSlug
+        );
+
+    if (
+      snapshot &&
+      isRecentSnapshot(
+        snapshot,
+        dependencies.now(),
+        dependencies.maxAgeMs
+      )
+    ) {
+      return snapshot.evaluation;
+    }
+  } catch {
+    // Snapshot storage is an optional
+    // read-through optimization.
+  }
+
+  const resolved =
+    await dependencies
+      .resolveLiveEvaluation(
+        agentSlug
+      );
 
   return resolved.evaluation;
 }
