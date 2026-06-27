@@ -1,18 +1,23 @@
 import {
-buildAgentEvaluation
-} from "../services/agent-evaluation.js";
+  resolveAgentEvaluation
+} from "../services/evaluation-snapshot.js";
 
 export async function evaluateAgentJson(
-agentSlug: string
+  agentSlug: string
 ): Promise<string> {
-const evaluation =
-await buildAgentEvaluation(
-agentSlug
-);
+  const resolved =
+    await resolveAgentEvaluation(
+      agentSlug
+    );
 
-return JSON.stringify(
-evaluation,
-null,
-2
-);
+  return JSON.stringify(
+    {
+      ...resolved.evaluation,
+
+      delivery:
+        resolved.delivery
+    },
+    null,
+    2
+  );
 }

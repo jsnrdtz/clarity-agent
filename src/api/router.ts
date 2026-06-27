@@ -8,8 +8,8 @@ import {
 } from "../data/agent-registry.js";
 
 import {
-  buildAgentEvaluation
-} from "../services/agent-evaluation.js";
+  resolveAgentEvaluation
+} from "../services/evaluation-snapshot.js";
 
 import {
   buildAgentComparison,
@@ -253,8 +253,8 @@ async function routeGetRequest(
     );
 
   if (evaluationMatch?.[1]) {
-    const evaluation =
-      await buildAgentEvaluation(
+    const resolved =
+      await resolveAgentEvaluation(
         decodePathValue(
           evaluationMatch[1]
         )
@@ -263,7 +263,11 @@ async function routeGetRequest(
     sendJson(
       response,
       200,
-      evaluation
+      {
+        ...resolved.evaluation,
+        delivery:
+          resolved.delivery
+      }
     );
 
     return;

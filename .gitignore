@@ -142,3 +142,7 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
 .env.local
+
+# Runtime evaluation snapshots
+data/snapshots/*.json
+data/snapshots/*.tmp

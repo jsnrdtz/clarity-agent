@@ -2,10 +2,13 @@ import {
   listRegisteredAgents
 } from "../data/agent-registry.js";
 
-import {
-  buildAgentEvaluation,
-  type AgentEvaluation
+import type {
+  AgentEvaluation
 } from "./agent-evaluation.js";
+
+import {
+  getAgentEvaluation
+} from "./evaluation-snapshot.js";
 
 export type EvaluationSummary = {
   agent: {
@@ -116,7 +119,7 @@ AgentRankingDependencies = {
     ),
 
   evaluateAgent:
-    buildAgentEvaluation
+    getAgentEvaluation
 };
 
 function resolveDependencies(
