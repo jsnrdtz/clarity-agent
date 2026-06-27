@@ -15,6 +15,10 @@ import {
 } from "node:path";
 
 import {
+  isClarityError
+} from "../errors/clarity-error.js";
+
+import {
   buildAgentEvaluation,
   type AgentEvaluation
 } from "./agent-evaluation.js";
@@ -311,6 +315,13 @@ export async function resolveAgentEvaluation(
       }
     };
   } catch (liveError) {
+    if (
+      !isClarityError(liveError) ||
+      !liveError.retryable
+    ) {
+      throw liveError;
+    }
+
     let snapshot:
       AgentEvaluationSnapshot | null =
         null;

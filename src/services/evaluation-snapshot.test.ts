@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import {
+  ClarityError
+} from "../errors/clarity-error.js";
+
 import type {
   AgentEvaluation
 } from "./agent-evaluation.js";
@@ -45,6 +49,18 @@ function createSnapshot(
 
     evaluation
   };
+}
+
+function createRetryableGitHubError():
+ClarityError {
+  return new ClarityError(
+    "GITHUB_UNAVAILABLE",
+    "GitHub unavailable",
+    503,
+    {
+      retryable: true
+    }
+  );
 }
 
 test(
@@ -111,7 +127,7 @@ test(
 );
 
 test(
-  "returns snapshot when live evaluation fails",
+  "returns snapshot when retryable live evaluation fails",
   async () => {
     const evaluation =
       createEvaluation();
@@ -122,9 +138,7 @@ test(
         {
           buildLiveEvaluation:
             async () => {
-              throw new Error(
-                "GitHub unavailable"
-              );
+              throw createRetryableGitHubError();
             },
 
           saveSnapshot:
@@ -177,9 +191,7 @@ test(
         {
           buildLiveEvaluation:
             async () => {
-              throw new Error(
-                "GitHub unavailable"
-              );
+              throw createRetryableGitHubError();
             },
 
           saveSnapshot:
@@ -195,6 +207,54 @@ test(
       ),
 
       /GitHub unavailable/
+    );
+  }
+);
+
+test(
+  "does not use snapshot for non-retryable live errors",
+  async () => {
+    const liveError =
+      new Error(
+        "Application bug"
+      );
+
+    let snapshotLoaded =
+      false;
+
+    await assert.rejects(
+      resolveAgentEvaluation(
+        "aeon",
+        {
+          buildLiveEvaluation:
+            async () => {
+              throw liveError;
+            },
+
+          saveSnapshot:
+            async (
+              value
+            ) =>
+              createSnapshot(value),
+
+          loadSnapshot:
+            async () => {
+              snapshotLoaded =
+                true;
+
+              return createSnapshot(
+                createEvaluation()
+              );
+            }
+        }
+      ),
+
+      /Application bug/
+    );
+
+    assert.equal(
+      snapshotLoaded,
+      false
     );
   }
 );
