@@ -44,6 +44,39 @@ export const agentRegistry: RegisteredAgent[] = [
       repository: "sdk",
       scope: "component"
     }
+  },
+  {
+    slug: "gitlawb",
+    name: "Gitlawb",
+    aliases: [
+      "gitlawb-agent",
+      "gitlawb/openclaude",
+      "openclaude"
+    ],
+    description:
+      "Open-source coding agent and command-line development assistant.",
+    github: {
+      owner: "Gitlawb",
+      repository: "openclaude",
+      scope: "primary"
+    }
+  },
+  {
+    slug: "ethy",
+    name: "Ethy",
+    aliases: [
+      "ethy-agent",
+      "ethyai",
+      "ethyai/agent-intelligence-arena",
+      "agent-intelligence-arena"
+    ],
+    description:
+      "Agent intelligence arena for evaluating and coordinating AI agents.",
+    github: {
+      owner: "EthyAI",
+      repository: "agent-intelligence-arena",
+      scope: "primary"
+    }
   }
 ];
 

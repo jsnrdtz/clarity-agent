@@ -32,6 +32,20 @@ const AGENT_EVIDENCE_PROFILES: Record<
     privacySensitive: true,
     note:
       "Public GitHub evidence is treated as partial. This does not prove that private repositories exist, but the visible SDK may not represent the complete product."
+  },
+
+  gitlawb: {
+    visibility: "unknown",
+    privacySensitive: false,
+    note:
+      "The OpenClaude repository is registered as the current anchor. The completeness of the wider public project structure has not yet been verified."
+  },
+
+  ethy: {
+    visibility: "unknown",
+    privacySensitive: false,
+    note:
+      "The Agent Intelligence Arena repository is registered as the current anchor. The completeness of the wider public project structure has not yet been verified."
   }
 };
 

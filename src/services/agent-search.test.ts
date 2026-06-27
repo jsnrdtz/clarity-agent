@@ -124,3 +124,57 @@ test(
     );
   }
 );
+
+test(
+  "finds Gitlawb by OpenClaude alias",
+  () => {
+    const result =
+      searchRegisteredAgents(
+        "openclaude"
+      );
+
+    assert.equal(
+      result.count,
+      1
+    );
+
+    assert.equal(
+      result.results[0]
+        ?.agent.slug,
+      "gitlawb"
+    );
+
+    assert.equal(
+      result.results[0]
+        ?.match.type,
+      "exact-alias"
+    );
+  }
+);
+
+test(
+  "finds Ethy by arena alias",
+  () => {
+    const result =
+      searchRegisteredAgents(
+        "agent intelligence arena"
+      );
+
+    assert.equal(
+      result.count,
+      1
+    );
+
+    assert.equal(
+      result.results[0]
+        ?.agent.slug,
+      "ethy"
+    );
+
+    assert.equal(
+      result.results[0]
+        ?.match.type,
+      "exact-alias"
+    );
+  }
+);

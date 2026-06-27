@@ -9,6 +9,20 @@ Readonly<Record<string, readonly string[]>> = {
     "prxvt ai",
     "prxvt privacy",
     "privacy agent"
+  ],
+
+  gitlawb: [
+    "gitlawb agent",
+    "gitlawb ai",
+    "openclaude",
+    "open claude"
+  ],
+
+  ethy: [
+    "ethy agent",
+    "ethy ai",
+    "ethyai",
+    "agent intelligence arena"
   ]
 };
 
