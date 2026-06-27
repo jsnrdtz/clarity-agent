@@ -1,62 +1,76 @@
 import {
-getAgentEvidenceProfile
+  getAgentEvidenceProfile
 } from "../data/agent-evidence.js";
 
 import {
-findRegisteredAgent
+  findRegisteredAgent
 } from "../data/agent-registry.js";
 
 import {
-assessPublicEvidence,
-formatPublicEvidenceAssessment
-} from "../services/public-evidence.js";
+  assessAutomaticPublicEvidence,
+  formatAutomaticPublicEvidence
+} from "../services/automatic-public-evidence.js";
 
 import {
-scoreProject
+  calculateProjectScore
+} from "../services/project-score.js";
+
+import {
+  scoreProject
 } from "./score-project.js";
 
 export async function rateAgent(
-agentSlug: string
+  agentSlug: string
 ): Promise<string> {
-const agent =
-findRegisteredAgent(agentSlug);
+  const agent =
+    findRegisteredAgent(agentSlug);
 
-if (!agent) {
-throw new Error(
-`Agent "${agentSlug}" is not registered.`
-);
-}
+  if (!agent) {
+    throw new Error(
+      `Agent "${agentSlug}" is not registered.`
+    );
+  }
 
-const projectReport =
-await scoreProject(
-agent.name,
-agent.github.owner,
-agent.github.repository
-);
+  const projectResult =
+    await calculateProjectScore(
+      agent.name,
+      agent.github.owner,
+      agent.github.repository
+    );
 
-const evidenceProfile =
-getAgentEvidenceProfile(
-agent.slug
-);
+  const projectReport =
+    await scoreProject(
+      agent.name,
+      agent.github.owner,
+      agent.github.repository
+    );
 
-const evidenceAssessment =
-assessPublicEvidence(
-agent,
-evidenceProfile
-);
+  const profile =
+    getAgentEvidenceProfile(
+      agent.slug
+    );
 
-const evidenceReport =
-formatPublicEvidenceAssessment(
-evidenceAssessment,
-evidenceProfile.note
-);
+  const evidenceAssessment =
+    assessAutomaticPublicEvidence(
+      agent,
+      profile,
+      projectResult
+    );
 
-return [
-projectReport.replace(
-"CLARITY PROJECT GITHUB SCORE",
-"CLARITY AGENT GITHUB REPORT"
-),
-"",
-evidenceReport
-].join("\n");
+  const evidenceReport =
+    formatAutomaticPublicEvidence(
+      agent,
+      profile,
+      projectResult,
+      evidenceAssessment
+    );
+
+  return [
+    projectReport.replace(
+      "CLARITY PROJECT GITHUB SCORE",
+      "CLARITY AGENT GITHUB REPORT"
+    ),
+    "",
+    evidenceReport
+  ].join("\n");
 }

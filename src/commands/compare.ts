@@ -8,7 +8,10 @@ import {
 } from "../data/agent-registry.js";
 
 import {
-  assessPublicEvidence,
+  assessAutomaticPublicEvidence
+} from "../services/automatic-public-evidence.js";
+
+import {
   type PublicEvidenceAssessment
 } from "../services/public-evidence.js";
 
@@ -26,22 +29,23 @@ type ComparedAgent = {
 async function analyzeAgent(
   agent: RegisteredAgent
 ): Promise<ComparedAgent> {
+  const result =
+    await calculateProjectScore(
+      agent.name,
+      agent.github.owner,
+      agent.github.repository
+    );
+
   const profile =
     getAgentEvidenceProfile(
       agent.slug
     );
 
   const evidence =
-    assessPublicEvidence(
+    assessAutomaticPublicEvidence(
       agent,
-      profile
-    );
-
-  const result =
-    await calculateProjectScore(
-      agent.name,
-      agent.github.owner,
-      agent.github.repository
+      profile,
+      result
     );
 
   return {
@@ -96,12 +100,12 @@ function determineComparisonStatus(
     !hasComparableEvidence(second)
   ) {
     return (
-      "Limited — at least one project has insufficient public evidence."
+      "Limited — at least one project has insufficient automatically verified public evidence."
     );
   }
 
   return (
-    "Comparable — both projects have sufficient public evidence."
+    "Comparable — both projects have sufficient automatically verified public evidence."
   );
 }
 
@@ -145,12 +149,18 @@ function formatProjectSummary(
   return [
     agent.name,
     `  Observed GitHub score: ${result.score.overall}/100`,
-    `  Public evidence coverage: ${evidence.coverage}/100`,
+    `  Automatic evidence coverage: ${evidence.coverage}/100`,
     `  Rating confidence: ${evidence.confidence}`,
-    `  Visibility profile: ${evidence.visibility}`,
+    `  Detected visibility: ${evidence.visibility}`,
     `  Anchor: ${result.discovery.anchor.fullName}`,
+    `  Dedicated brand account: ${
+      result.discovery.dedicatedBrandAccount
+        ? "yes"
+        : "no"
+    }`,
     `  Core repositories: ${result.metrics.repositories.length}`,
     `  Ecosystem repositories: ${result.ecosystem.length}`,
+    `  Repositories requiring review: ${result.discovery.review.length}`,
     `  Raw commits: ${result.metrics.rawCommitsLast30Days}`,
     `  Adjusted activity: ${result.metrics.adjustedCommitsLast30Days}`,
     `  Unique contributors: ${result.metrics.uniqueContributors}`,
@@ -166,7 +176,7 @@ function formatLimitations(
     0
   ) {
     return [
-      `- ${compared.agent.name}: no major evidence limitations detected.`
+      `- ${compared.agent.name}: no major automatic evidence limitations detected.`
     ];
   }
 
@@ -243,7 +253,7 @@ export async function compareAgents(
     ),
 
     formatMetricRow(
-      "Public Evidence",
+      "Automatic Evidence",
       first.evidence.coverage,
       second.evidence.coverage,
       firstWidth,
@@ -299,6 +309,14 @@ export async function compareAgents(
     ),
 
     formatMetricRow(
+      "Repositories for Review",
+      first.result.discovery.review.length,
+      second.result.discovery.review.length,
+      firstWidth,
+      secondWidth
+    ),
+
+    formatMetricRow(
       "Unique Contributors",
       first.result.metrics.uniqueContributors,
       second.result.metrics.uniqueContributors,
@@ -348,14 +366,15 @@ export async function compareAgents(
     "",
     formatProjectSummary(second),
     "",
-    "PUBLIC EVIDENCE LIMITATIONS",
+    "AUTOMATIC EVIDENCE LIMITATIONS",
     "",
     ...formatLimitations(first),
     ...formatLimitations(second),
     "",
     "Comparison method:",
-    "- Observed GitHub scores describe only publicly visible development evidence.",
-    "- Public Evidence Coverage measures how representative that evidence may be.",
+    "- Observed GitHub scores describe publicly visible development evidence.",
+    "- Evidence Coverage is calculated automatically from repository structure and activity.",
+    "- Manual visibility labels do not affect the automatic coverage score.",
     "- A project with low confidence cannot fairly win or lose a direct comparison.",
     "- Low evidence coverage is not treated as low project quality.",
     "- Ecosystem repositories do not directly affect the core GitHub score.",

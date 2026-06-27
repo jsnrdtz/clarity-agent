@@ -8,7 +8,10 @@ import {
 } from "../data/agent-registry.js";
 
 import {
-  assessPublicEvidence,
+  assessAutomaticPublicEvidence
+} from "../services/automatic-public-evidence.js";
+
+import {
   type PublicEvidenceAssessment
 } from "../services/public-evidence.js";
 
@@ -31,22 +34,23 @@ type FailedAgent = {
 async function evaluateAgent(
   agent: RegisteredAgent
 ): Promise<EvaluatedAgent> {
+  const result =
+    await calculateProjectScore(
+      agent.name,
+      agent.github.owner,
+      agent.github.repository
+    );
+
   const profile =
     getAgentEvidenceProfile(
       agent.slug
     );
 
   const evidence =
-    assessPublicEvidence(
+    assessAutomaticPublicEvidence(
       agent,
-      profile
-    );
-
-  const result =
-    await calculateProjectScore(
-      agent.name,
-      agent.github.owner,
-      agent.github.repository
+      profile,
+      result
     );
 
   return {
@@ -202,18 +206,6 @@ export async function getTopAgents():
           "No projects have insufficient public evidence."
         );
 
-  const scopeWarnings =
-    evaluated
-      .filter(
-        ({ agent }) =>
-          agent.github.scope ===
-          "component"
-      )
-      .map(
-        ({ agent }) =>
-          `- ${agent.name} uses a component repository as its current anchor.`
-      );
-
   const failedRows =
     failed.map(
       ({ agent, reason }) =>
@@ -225,7 +217,7 @@ export async function getTopAgents():
     "Public GitHub evidence only — not a complete quality ranking",
     "",
     "RANKED PROJECTS",
-    "Only projects with medium or high evidence confidence receive a ranking position.",
+    "Only projects with medium or high automatic evidence confidence receive a ranking position.",
     "",
     rankingRows,
     "",
@@ -239,13 +231,6 @@ export async function getTopAgents():
     `Agents not ranked: ${limitedEvidence.length}`,
     `Agents failed: ${failed.length}`,
     "",
-    ...(scopeWarnings.length > 0
-      ? [
-          "Coverage warnings:",
-          ...scopeWarnings,
-          ""
-        ]
-      : []),
     ...(failedRows.length > 0
       ? [
           "Failed agents:",
@@ -256,7 +241,8 @@ export async function getTopAgents():
     "Ranking method:",
     "- Project repositories are discovered automatically.",
     "- Only approved core repositories affect the observed GitHub score.",
-    "- Public Evidence Coverage measures how representative the visible data may be.",
+    "- Evidence coverage is calculated from observable repository structure and activity.",
+    "- Manual visibility labels do not affect the automatic coverage score.",
     "- Low-confidence projects are displayed separately instead of receiving a ranking position.",
     "- Low evidence coverage is not treated as low project quality.",
     "",
