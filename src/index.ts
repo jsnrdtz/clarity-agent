@@ -1,4 +1,8 @@
 import {
+  evaluateAgentJson
+} from "./commands/evaluate.js";
+
+import {
   inspectEvidence
 } from "./commands/evidence.js";
 
@@ -61,6 +65,7 @@ top
 rate <agent>
 compare <agent-one> <agent-two>
   evidence <agent>
+  evaluate <agent> [--json]
 discover-github <owner>
 discover-related <owner> <anchor-repository>
 discover-project <brand> <owner> <anchor-repository>
@@ -77,6 +82,7 @@ npm run dev -- top
 npm run dev -- rate aeon
 npm run dev -- compare aeon prxvt
   npm run dev -- evidence aeon
+  npm run dev -- evaluate aeon --json
   npm run dev -- evidence prxvt
 npm run dev -- discover-github PRXVT
 npm run dev -- discover-related aaronjmars aeon
@@ -103,6 +109,37 @@ return;
 
 try {
 switch (command.toLowerCase()) {
+
+      case "evaluate": {
+        const [
+          agentSlug,
+          formatFlag
+        ] = args;
+
+        if (!agentSlug) {
+          throw new Error(
+            "Usage: evaluate <agent> [--json]"
+          );
+        }
+
+        if (
+          formatFlag &&
+          formatFlag !== "--json"
+        ) {
+          throw new Error(
+            `Unknown evaluate option: "${formatFlag}"`
+          );
+        }
+
+        const result =
+          await evaluateAgentJson(
+            agentSlug
+          );
+
+        console.log(result);
+        break;
+      }
+
 
       case "evidence": {
         const [agentSlug] = args;

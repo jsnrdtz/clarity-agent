@@ -341,24 +341,26 @@ addEvidence(
 "Repository name contains the anchor repository name."
 );
 }
+  const anchorHomepage =
+    normalizeUrl(anchor.homepage);
 
-const anchorHomepage =
-normalizeUrl(anchor.homepage);
+  const repositoryHomepage =
+    normalizeUrl(repository.homepage);
 
-const repositoryHomepage =
-normalizeUrl(repository.homepage);
+  if (
+    dedicatedBrandAccount &&
+    anchorHomepage &&
+    repositoryHomepage &&
+    anchorHomepage ===
+      repositoryHomepage
+  ) {
+    addEvidence(
+      10,
+      "Repository uses the same homepage on the dedicated project account."
+    );
+  }
 
-if (
-anchorHomepage &&
-repositoryHomepage &&
-anchorHomepage ===
-repositoryHomepage
-) {
-addEvidence(
-25,
-"Repository uses the same project homepage."
-);
-}
+
 
 if (
 role === "component" ||
