@@ -6,7 +6,7 @@
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "api": "tsx src/server.ts",
-    "test": "node --import tsx --test src/services/*.test.ts"
+    "test": "node --import tsx --test src/scoring/*.test.ts src/services/*.test.ts"
   },
   "repository": {
     "type": "git",
