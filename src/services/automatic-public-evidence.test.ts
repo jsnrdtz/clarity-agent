@@ -404,3 +404,48 @@ test(
     );
   }
 );
+
+test(
+  "caps evidence for a single repository on a differently named account",
+  () => {
+    const assessment =
+      assess({
+        scope: "primary",
+        dedicatedBrandAccount: false,
+        coreCount: 1,
+        ecosystemCount: 0,
+        hasReadme: true,
+        reviewCount: 1,
+
+        coreRelationScores: [
+          100
+        ],
+
+        daysSinceLatestPush: 0
+      });
+
+    assert.equal(
+      assessment.coverage,
+      70
+    );
+
+    assert.equal(
+      assessment.confidence,
+      "medium"
+    );
+
+    assert.equal(
+      assessment.visibility,
+      "partial"
+    );
+
+    assert.ok(
+      assessment.limitations.some(
+        (limitation) =>
+          limitation.includes(
+            "capped below high confidence"
+          )
+      )
+    );
+  }
+);

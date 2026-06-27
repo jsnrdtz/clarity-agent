@@ -19,6 +19,9 @@ import {
 const DAY_IN_MILLISECONDS =
   24 * 60 * 60 * 1000;
 
+const SINGLE_REPOSITORY_COVERAGE_CAP =
+  70;
+
 function clampScore(
   value: number
 ): number {
@@ -336,8 +339,27 @@ export function assessAutomaticPublicEvidence(
     );
   }
 
-  const finalCoverage =
+  let finalCoverage =
     clampScore(coverage);
+
+  const hasLimitedPublicStructure =
+    !result.discovery
+      .dedicatedBrandAccount &&
+    coreRepositoryCount === 1 &&
+    result.ecosystem.length === 0;
+
+  if (
+    hasLimitedPublicStructure &&
+    finalCoverage >
+      SINGLE_REPOSITORY_COVERAGE_CAP
+  ) {
+    finalCoverage =
+      SINGLE_REPOSITORY_COVERAGE_CAP;
+
+    limitations.push(
+      "Public evidence is limited to one approved core repository on a differently named GitHub account, so coverage is capped below high confidence."
+    );
+  }
 
   const confidence =
     getConfidence(finalCoverage);
