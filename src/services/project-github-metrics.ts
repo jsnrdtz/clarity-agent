@@ -3,6 +3,11 @@ import {
 } from "octokit";
 
 import {
+  collectPaginatedItems,
+  type PaginatedResponse
+} from "./capped-pagination.js";
+
+import {
   getRepositoryData as fetchRepositoryData,
   type GitHubRepositoryData
 } from "./github.js";
@@ -24,6 +29,12 @@ const octokit =
   );
 
 const PER_PAGE = 100;
+
+const MAX_CONTRIBUTOR_PAGES = 2;
+
+const MAX_CONTRIBUTORS =
+  PER_PAGE *
+  MAX_CONTRIBUTOR_PAGES;
 
 const ADDITIONAL_CORE_ACTIVITY_WEIGHT =
   0.25;
@@ -106,8 +117,8 @@ async function fetchContributorKeysUnwrapped(
   owner: string,
   repository: string
 ): Promise<string[]> {
-  const contributors =
-    await octokit.paginate(
+  const pages =
+    octokit.paginate.iterator(
       octokit.rest.repos
         .listContributors,
       {
@@ -115,11 +126,19 @@ async function fetchContributorKeysUnwrapped(
         repo: repository,
         per_page: PER_PAGE
       }
+    ) as AsyncIterable<
+      PaginatedResponse<
+        ContributorIdentity
+      >
+    >;
+
+  const result =
+    await collectPaginatedItems(
+      pages,
+      MAX_CONTRIBUTORS
     );
 
-  return (
-    contributors as ContributorIdentity[]
-  ).map(
+  return result.items.map(
     (contributor, index) =>
       getContributorKey(
         contributor,
