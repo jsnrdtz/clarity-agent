@@ -87,6 +87,34 @@ jobs:
           docker logs clarity-agent-ci
           exit 1
 
+      - name: Verify Docker health status
+        run: |
+          for attempt in {1..20}; do
+            STATUS="$(
+              docker inspect                 --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}'                 clarity-agent-ci
+            )"
+
+            echo "Docker health: ${STATUS}"
+
+            if [ "${STATUS}" = "healthy" ]; then
+              exit 0
+            fi
+
+            if [ "${STATUS}" = "unhealthy" ]; then
+              docker inspect                 --format '{{json .State.Health}}'                 clarity-agent-ci
+
+              docker logs clarity-agent-ci
+              exit 1
+            fi
+
+            sleep 1
+          done
+
+          docker inspect             --format '{{json .State.Health}}'             clarity-agent-ci
+
+          docker logs clarity-agent-ci
+          exit 1
+
       - name: Verify public API
         run: |
           curl \
