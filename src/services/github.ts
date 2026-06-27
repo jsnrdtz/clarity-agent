@@ -1,5 +1,9 @@
 import { Octokit } from "octokit";
 
+import {
+  normalizeGitHubError
+} from "./github-error.js";
+
 const githubToken = process.env.GITHUB_TOKEN;
 
 const octokit = new Octokit(
@@ -168,7 +172,7 @@ async function getReleaseData(
   };
 }
 
-export async function getRepositoryData(
+async function getRepositoryDataUnwrapped(
   owner: string,
   repo: string
 ): Promise<GitHubRepositoryData> {
@@ -261,4 +265,26 @@ export async function getRepositoryData(
       hasReadme
     }
   };
+}
+
+
+export async function getRepositoryData(
+  owner: string,
+  repo: string
+): Promise<GitHubRepositoryData> {
+  try {
+    return await getRepositoryDataUnwrapped(
+      owner,
+      repo
+    );
+  } catch (error) {
+    throw normalizeGitHubError(
+      error,
+      {
+        resource: "repository",
+        owner,
+        repository: repo
+      }
+    );
+  }
 }

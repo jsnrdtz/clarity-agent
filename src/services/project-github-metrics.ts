@@ -7,6 +7,10 @@ import {
   type GitHubRepositoryData
 } from "./github.js";
 
+import {
+  normalizeGitHubError
+} from "./github-error.js";
+
 const githubToken =
   process.env.GITHUB_TOKEN;
 
@@ -98,7 +102,7 @@ function getContributorKey(
   );
 }
 
-async function fetchContributorKeys(
+async function fetchContributorKeysUnwrapped(
   owner: string,
   repository: string
 ): Promise<string[]> {
@@ -468,4 +472,26 @@ export async function buildProjectGitHubMetrics(
     adjustedCommitsLast30Days,
     uniqueContributors
   };
+}
+
+
+async function fetchContributorKeys(
+  owner: string,
+  repository: string
+): Promise<string[]> {
+  try {
+    return await fetchContributorKeysUnwrapped(
+      owner,
+      repository
+    );
+  } catch (error) {
+    throw normalizeGitHubError(
+      error,
+      {
+        resource: "repository",
+        owner,
+        repository
+      }
+    );
+  }
 }

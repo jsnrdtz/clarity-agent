@@ -1,3 +1,7 @@
+import {
+  toClarityError
+} from "../errors/clarity-error.js";
+
 import type {
   IncomingMessage,
   ServerResponse
@@ -90,56 +94,39 @@ function sendError(
   response: ServerResponse,
   error: unknown
 ): void {
-  const message =
-    error instanceof Error
-      ? error.message
-      : "Unknown API error.";
+  const normalized =
+    toClarityError(error);
 
   if (
-    message.includes(
-      "is not registered"
-    )
+    normalized.code ===
+    "INTERNAL_SERVER_ERROR"
   ) {
-    sendJson(
-      response,
-      404,
-      {
-        error: {
-          code: "AGENT_NOT_FOUND",
-          message
-        }
-      }
+    console.error(
+      "Unhandled API error:",
+      error
     );
-
-    return;
-  }
-
-  if (
-    message.includes(
-      "two different agents"
-    )
-  ) {
-    sendJson(
-      response,
-      400,
-      {
-        error: {
-          code: "INVALID_COMPARISON",
-          message
-        }
-      }
-    );
-
-    return;
   }
 
   sendJson(
     response,
-    500,
+    normalized.statusCode,
     {
       error: {
-        code: "INTERNAL_SERVER_ERROR",
-        message
+        code:
+          normalized.code,
+
+        message:
+          normalized.message,
+
+        retryable:
+          normalized.retryable,
+
+        ...(normalized.details
+          ? {
+              details:
+                normalized.details
+            }
+          : {})
       }
     }
   );

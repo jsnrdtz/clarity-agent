@@ -1,5 +1,9 @@
 import { Octokit } from "octokit";
 
+import {
+  normalizeGitHubError
+} from "./github-error.js";
+
 const githubToken = process.env.GITHUB_TOKEN;
 
 const octokit = new Octokit(
@@ -212,7 +216,7 @@ const firstTimestamp = first.pushedAt
 );
 }
 
-export async function discoverGitHubOwner(
+async function discoverGitHubOwnerUnwrapped(
 owner: string
 ): Promise<GitHubOwnerDiscovery> {
 const profileResponse =
@@ -356,4 +360,23 @@ collectedAt:
 
 
 };
+}
+
+
+export async function discoverGitHubOwner(
+  owner: string
+): Promise<GitHubOwnerDiscovery> {
+  try {
+    return await discoverGitHubOwnerUnwrapped(
+      owner
+    );
+  } catch (error) {
+    throw normalizeGitHubError(
+      error,
+      {
+        resource: "owner",
+        owner
+      }
+    );
+  }
 }
