@@ -4,7 +4,8 @@
   "description": "Intelligence for the AI agent economy — discover, compare, and rank autonomous agents using verifiable data.",
   "scripts": {
     "dev": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "api": "tsx src/server.ts"
   },
   "repository": {
     "type": "git",
