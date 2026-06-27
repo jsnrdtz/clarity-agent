@@ -1,4 +1,8 @@
 import {
+  openApiDocument
+} from "./openapi.js";
+
+import {
   toClarityError
 } from "../errors/clarity-error.js";
 
@@ -136,6 +140,16 @@ async function routeGetRequest(
   pathname: string,
   response: ServerResponse
 ): Promise<void> {
+  if (pathname === "/openapi.json") {
+    sendJson(
+      response,
+      200,
+      openApiDocument
+    );
+
+    return;
+  }
+
   if (pathname === "/health") {
     sendJson(
       response,

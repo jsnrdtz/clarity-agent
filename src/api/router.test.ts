@@ -403,3 +403,42 @@ test(
     );
   }
 );
+
+test(
+  "serves the OpenAPI document",
+  async () => {
+    const {
+      response,
+      body
+    } =
+      await getJson(
+        "/openapi.json"
+      );
+
+    assert.equal(
+      response.status,
+      200
+    );
+
+    assert.equal(
+      body.openapi,
+      "3.1.0"
+    );
+
+    const paths =
+      body.paths as
+        Record<string, unknown>;
+
+    assert.ok(
+      paths[
+        "/api/v1/evaluate/{agent}"
+      ]
+    );
+
+    assert.ok(
+      paths[
+        "/api/v1/compare/{left}/{right}"
+      ]
+    );
+  }
+);
