@@ -98,6 +98,37 @@ export type ComparisonResponse = {
   generatedAt: string;
 };
 
+export type AgentRankingDependencies = {
+  listAgentSlugs: () => string[];
+
+  evaluateAgent:
+    (
+      agentSlug: string
+    ) => Promise<AgentEvaluation>;
+};
+
+const defaultDependencies:
+AgentRankingDependencies = {
+  listAgentSlugs: () =>
+    listRegisteredAgents().map(
+      (agent) =>
+        agent.slug
+    ),
+
+  evaluateAgent:
+    buildAgentEvaluation
+};
+
+function resolveDependencies(
+  overrides:
+    Partial<AgentRankingDependencies>
+): AgentRankingDependencies {
+  return {
+    ...defaultDependencies,
+    ...overrides
+  };
+}
+
 function createEvaluationSummary(
   evaluation: AgentEvaluation
 ): EvaluationSummary {
@@ -154,17 +185,24 @@ function createEvaluationSummary(
   };
 }
 
-export async function buildAgentRanking():
-Promise<RankingResponse> {
-  const registeredAgents =
-    listRegisteredAgents();
+export async function buildAgentRanking(
+  dependencyOverrides:
+    Partial<AgentRankingDependencies> = {}
+): Promise<RankingResponse> {
+  const dependencies =
+    resolveDependencies(
+      dependencyOverrides
+    );
+
+  const agentSlugs =
+    dependencies.listAgentSlugs();
 
   const evaluations =
     await Promise.all(
-      registeredAgents.map(
-        (agent) =>
-          buildAgentEvaluation(
-            agent.slug
+      agentSlugs.map(
+        (agentSlug) =>
+          dependencies.evaluateAgent(
+            agentSlug
           )
       )
     );
@@ -265,7 +303,10 @@ Promise<RankingResponse> {
 
 export async function buildAgentComparison(
   leftSlug: string,
-  rightSlug: string
+  rightSlug: string,
+
+  dependencyOverrides:
+    Partial<AgentRankingDependencies> = {}
 ): Promise<ComparisonResponse> {
   if (
     leftSlug.toLowerCase() ===
@@ -276,12 +317,22 @@ export async function buildAgentComparison(
     );
   }
 
+  const dependencies =
+    resolveDependencies(
+      dependencyOverrides
+    );
+
   const [
     leftEvaluation,
     rightEvaluation
   ] = await Promise.all([
-    buildAgentEvaluation(leftSlug),
-    buildAgentEvaluation(rightSlug)
+    dependencies.evaluateAgent(
+      leftSlug
+    ),
+
+    dependencies.evaluateAgent(
+      rightSlug
+    )
   ]);
 
   const left =
