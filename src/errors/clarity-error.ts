@@ -79,52 +79,11 @@ export function isClarityError(
   );
 }
 
-function getErrorMessage(
-  error: unknown
-): string {
-  return error instanceof Error
-    ? error.message
-    : "Unknown error.";
-}
-
 export function toClarityError(
   error: unknown
 ): ClarityError {
   if (isClarityError(error)) {
     return error;
-  }
-
-  const message =
-    getErrorMessage(error);
-
-  if (
-    message.includes(
-      "is not registered"
-    )
-  ) {
-    return new ClarityError(
-      "AGENT_NOT_FOUND",
-      message,
-      404,
-      {
-        cause: error
-      }
-    );
-  }
-
-  if (
-    message.includes(
-      "two different agents"
-    )
-  ) {
-    return new ClarityError(
-      "INVALID_COMPARISON",
-      message,
-      400,
-      {
-        cause: error
-      }
-    );
   }
 
   return new ClarityError(

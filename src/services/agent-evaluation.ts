@@ -1,4 +1,8 @@
 import {
+  ClarityError
+} from "../errors/clarity-error.js";
+
+import {
 getAgentEvidenceProfile
 } from "../data/agent-evidence.js";
 
@@ -192,8 +196,10 @@ const agent =
 findRegisteredAgent(agentSlug);
 
 if (!agent) {
-throw new Error(
-`Agent "${agentSlug}" is not registered.`
+throw new ClarityError(
+"AGENT_NOT_FOUND",
+`Agent "${agentSlug}" is not registered.`,
+404
 );
 }
 

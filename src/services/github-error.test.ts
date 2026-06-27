@@ -224,40 +224,34 @@ test(
 );
 
 test(
-  "maps existing application messages",
+  "preserves typed application errors",
   () => {
     const missingAgent =
-      toClarityError(
-        new Error(
-          'Agent "unknown" is not registered.'
-        )
+      new ClarityError(
+        "AGENT_NOT_FOUND",
+        'Agent "unknown" is not registered.',
+        404
       );
 
     const invalidComparison =
-      toClarityError(
-        new Error(
-          "Comparison requires two different agents."
-        )
+      new ClarityError(
+        "INVALID_COMPARISON",
+        "Comparison requires two different agents.",
+        400
       );
 
-    assert.equal(
-      missingAgent.code,
-      "AGENT_NOT_FOUND"
+    assert.strictEqual(
+      toClarityError(
+        missingAgent
+      ),
+      missingAgent
     );
 
-    assert.equal(
-      missingAgent.statusCode,
-      404
-    );
-
-    assert.equal(
-      invalidComparison.code,
-      "INVALID_COMPARISON"
-    );
-
-    assert.equal(
-      invalidComparison.statusCode,
-      400
+    assert.strictEqual(
+      toClarityError(
+        invalidComparison
+      ),
+      invalidComparison
     );
   }
 );

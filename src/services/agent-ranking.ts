@@ -1,4 +1,8 @@
 import {
+  ClarityError
+} from "../errors/clarity-error.js";
+
+import {
   listRegisteredAgents
 } from "../data/agent-registry.js";
 
@@ -315,8 +319,10 @@ export async function buildAgentComparison(
     leftSlug.toLowerCase() ===
     rightSlug.toLowerCase()
   ) {
-    throw new Error(
-      "Comparison requires two different agents."
+    throw new ClarityError(
+      "INVALID_COMPARISON",
+      "Comparison requires two different agents.",
+      400
     );
   }
 
