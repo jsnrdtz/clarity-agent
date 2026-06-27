@@ -41,3 +41,106 @@ jobs:
 
       - name: Build production output
         run: npm run build
+
+  docker:
+    name: Build and test Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs:
+      - verify
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --tag clarity-agent:ci \
+            .
+
+      - name: Start Docker container
+        run: |
+          docker run \
+            --detach \
+            --name clarity-agent-ci \
+            --publish 127.0.0.1:3102:3000 \
+            clarity-agent:ci
+
+      - name: Wait for API health
+        run: |
+          for attempt in {1..30}; do
+            if curl \
+              --fail \
+              --silent \
+              http://127.0.0.1:3102/health \
+              > /tmp/clarity-health.json
+            then
+              cat /tmp/clarity-health.json
+              exit 0
+            fi
+
+            echo "Waiting for API: ${attempt}/30"
+            sleep 1
+          done
+
+          docker logs clarity-agent-ci
+          exit 1
+
+      - name: Verify public API
+        run: |
+          curl \
+            --fail \
+            --silent \
+            http://127.0.0.1:3102/api/v1/agents \
+            > /tmp/clarity-agents.json
+
+          cat /tmp/clarity-agents.json
+
+          grep -q '"aeon"' \
+            /tmp/clarity-agents.json
+
+          grep -q '"prxvt"' \
+            /tmp/clarity-agents.json
+
+          grep -q '"gitlawb"' \
+            /tmp/clarity-agents.json
+
+          grep -q '"ethy"' \
+            /tmp/clarity-agents.json
+
+      - name: Verify graceful shutdown
+        run: |
+          docker stop clarity-agent-ci
+
+          EXIT_CODE="$(
+            docker inspect \
+              --format '{{.State.ExitCode}}' \
+              clarity-agent-ci
+          )"
+
+          echo "Container exit code: ${EXIT_CODE}"
+
+          test "${EXIT_CODE}" = "0"
+
+          docker logs clarity-agent-ci \
+            > /tmp/clarity-container.log \
+            2>&1
+
+          cat /tmp/clarity-container.log
+
+          grep -q \
+            "SIGTERM received. Shutting down Clarity API" \
+            /tmp/clarity-container.log
+
+          grep -q \
+            "Clarity API stopped." \
+            /tmp/clarity-container.log
+
+      - name: Clean up Docker container
+        if: always()
+        run: |
+          docker rm \
+            --force \
+            clarity-agent-ci \
+            2>/dev/null || true
