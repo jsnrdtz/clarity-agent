@@ -146,3 +146,4 @@ vite.config.ts.timestamp-*
 # Runtime evaluation snapshots
 data/snapshots/*.json
 data/snapshots/*.tmp
+data/refresh.lock

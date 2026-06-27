@@ -2,6 +2,11 @@ import {
   refreshAllAgentSnapshots
 } from "../services/agent-refresh.js";
 
+import {
+  acquireRefreshLock,
+  RefreshAlreadyRunningError
+} from "../services/refresh-lock.js";
+
 export type RefreshCommandResult = {
   output: string;
   hasFailures: boolean;
@@ -55,25 +60,100 @@ function formatTextReport(
   ].join("\n");
 }
 
+function formatLockFailure(
+  error:
+    RefreshAlreadyRunningError,
+
+  asJson: boolean
+): string {
+  const failure = {
+    schemaVersion: "1.0",
+
+    status: "failed",
+
+    error: {
+      code:
+        error.code,
+
+      message:
+        error.message,
+
+      retryable:
+        error.retryable
+    }
+  };
+
+  if (asJson) {
+    return JSON.stringify(
+      failure,
+      null,
+      2
+    );
+  }
+
+  return [
+    "CLARITY SNAPSHOT REFRESH",
+    "",
+    "FAILED",
+    `Code: ${failure.error.code}`,
+    `Retryable: ${failure.error.retryable}`,
+    `Message: ${failure.error.message}`
+  ].join("\n");
+}
+
 export async function runRefreshCommand(
   asJson = false
 ): Promise<RefreshCommandResult> {
-  const report =
-    await refreshAllAgentSnapshots();
+  let lock:
+    Awaited<
+      ReturnType<
+        typeof acquireRefreshLock
+      >
+    >;
 
-  return {
-    output:
-      asJson
-        ? JSON.stringify(
-            report,
-            null,
-            2
-          )
-        : formatTextReport(
-            report
+  try {
+    lock =
+      await acquireRefreshLock();
+  } catch (error) {
+    if (
+      error instanceof
+        RefreshAlreadyRunningError
+    ) {
+      return {
+        output:
+          formatLockFailure(
+            error,
+            asJson
           ),
 
-    hasFailures:
-      report.totals.failed > 0
-  };
+        hasFailures:
+          true
+      };
+    }
+
+    throw error;
+  }
+
+  try {
+    const report =
+      await refreshAllAgentSnapshots();
+
+    return {
+      output:
+        asJson
+          ? JSON.stringify(
+              report,
+              null,
+              2
+            )
+          : formatTextReport(
+              report
+            ),
+
+      hasFailures:
+        report.totals.failed > 0
+    };
+  } finally {
+    await lock.release();
+  }
 }
