@@ -900,6 +900,8 @@ export const openApiDocument = {
           "agent",
           "githubScore",
           "evidenceCoverage",
+          "sourceCollectedAt",
+          "evaluationCollectedAt",
           "confidence"
         ],
 
@@ -924,6 +926,16 @@ export const openApiDocument = {
             type: "integer",
             minimum: 0,
             maximum: 100
+          },
+
+          sourceCollectedAt: {
+            type: "string",
+            format: "date-time"
+          },
+
+          evaluationCollectedAt: {
+            type: "string",
+            format: "date-time"
           },
 
           confidence: {

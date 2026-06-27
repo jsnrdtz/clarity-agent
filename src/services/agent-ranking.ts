@@ -23,6 +23,9 @@ export type EvaluationSummary = {
   githubScore: number;
   evidenceCoverage: number;
 
+  sourceCollectedAt: string;
+  evaluationCollectedAt: string;
+
   confidence:
     AgentEvaluation["scores"]["publicEvidence"]["confidence"];
 
@@ -154,6 +157,12 @@ function createEvaluationSummary(
     evidenceCoverage:
       evaluation.scores
         .publicEvidence.coverage,
+
+    sourceCollectedAt:
+      evaluation.sourceCollectedAt,
+
+    evaluationCollectedAt:
+      evaluation.collectedAt,
 
     confidence:
       evaluation.scores
