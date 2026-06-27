@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "api": "tsx src/server.ts"
+    "api": "tsx src/server.ts",
+    "test": "node --import tsx --test src/services/ttl-promise-cache.test.ts"
   },
   "repository": {
     "type": "git",
