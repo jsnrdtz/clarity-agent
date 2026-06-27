@@ -1,4 +1,8 @@
 import {
+  inspectEvidence
+} from "./commands/evidence.js";
+
+import {
 compareAgents
 } from "./commands/compare.js";
 
@@ -56,6 +60,7 @@ agents
 top
 rate <agent>
 compare <agent-one> <agent-two>
+  evidence <agent>
 discover-github <owner>
 discover-related <owner> <anchor-repository>
 discover-project <brand> <owner> <anchor-repository>
@@ -71,6 +76,8 @@ npm run dev -- agents
 npm run dev -- top
 npm run dev -- rate aeon
 npm run dev -- compare aeon prxvt
+  npm run dev -- evidence aeon
+  npm run dev -- evidence prxvt
 npm run dev -- discover-github PRXVT
 npm run dev -- discover-related aaronjmars aeon
 npm run dev -- discover-project PRXVT PRXVT sdk
@@ -96,6 +103,25 @@ return;
 
 try {
 switch (command.toLowerCase()) {
+
+      case "evidence": {
+        const [agentSlug] = args;
+
+        if (!agentSlug) {
+          throw new Error(
+            "Usage: evidence <agent>"
+          );
+        }
+
+        const result =
+          await inspectEvidence(
+            agentSlug
+          );
+
+        console.log(result);
+        break;
+      }
+
 case "agents": {
 const agents =
 listRegisteredAgents();
