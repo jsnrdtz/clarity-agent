@@ -6,6 +6,7 @@ export type RegisteredAgent = {
   slug: string;
   name: string;
   aliases: string[];
+  searchAliases: string[];
   description: string;
   github: {
     owner: string;
@@ -22,6 +23,10 @@ export const agentRegistry: RegisteredAgent[] = [
       "aeon-agent",
       "aaronjmars/aeon"
     ],
+
+    searchAliases: [
+      "aeon ai"
+    ],
     description:
       "Autonomous agent framework with reusable skills and scheduled workflows.",
     github: {
@@ -36,6 +41,12 @@ export const agentRegistry: RegisteredAgent[] = [
     aliases: [
       "prxvt-sdk",
       "prxvt/sdk"
+    ],
+
+    searchAliases: [
+      "prxvt ai",
+      "prxvt privacy",
+      "privacy agent"
     ],
     description:
       "Privacy infrastructure and SDK for private x402 payments.",
@@ -53,6 +64,12 @@ export const agentRegistry: RegisteredAgent[] = [
       "gitlawb/openclaude",
       "openclaude"
     ],
+
+    searchAliases: [
+      "gitlawb ai",
+      "gitlawb agent",
+      "coding agent"
+    ],
     description:
       "Open-source coding agent and command-line development assistant.",
     github: {
@@ -69,6 +86,12 @@ export const agentRegistry: RegisteredAgent[] = [
       "ethyai",
       "ethyai/agent-intelligence-arena",
       "agent-intelligence-arena"
+    ],
+
+    searchAliases: [
+      "ethy agent",
+      "signal marketplace",
+      "trading signal agent"
     ],
     description:
       "Agent intelligence arena for evaluating and coordinating AI agents.",

@@ -1,8 +1,4 @@
 import {
-  getAgentAliases
-} from "../data/agent-aliases.js";
-
-import {
   listRegisteredAgents
 } from "../data/agent-registry.js";
 
@@ -196,10 +192,10 @@ export function searchRegisteredAgents(
         (
           agent
         ): AgentSearchResult | null => {
-          const aliases =
-            getAgentAliases(
-              agent.slug
-            );
+          const aliases = [
+            ...agent.aliases,
+            ...agent.searchAliases
+          ];
 
           const candidates:
           SearchCandidate[] = [
