@@ -1,6 +1,10 @@
 import { Octokit } from "octokit";
 
 import {
+  collectPaginatedItems,
+  countPaginatedItems
+} from "./capped-pagination.js";
+import {
   normalizeGitHubError
 } from "./github-error.js";
 
@@ -16,6 +20,17 @@ const octokit = new Octokit(
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const PER_PAGE = 100;
+const MAX_COMMIT_PAGES = 3;
+const MAX_COMMITS =
+  PER_PAGE * MAX_COMMIT_PAGES;
+
+const MAX_CONTRIBUTOR_PAGES = 2;
+const MAX_CONTRIBUTORS =
+  PER_PAGE * MAX_CONTRIBUTOR_PAGES;
+
+const MAX_RELEASE_PAGES = 2;
+const MAX_RELEASES =
+  PER_PAGE * MAX_RELEASE_PAGES;
 
 export type GitHubRepositoryData = {
   owner: string;
@@ -84,25 +99,32 @@ async function getCommitsLast30Days(
   owner: string,
   repo: string,
   since: string
-): Promise<number> {
+): Promise<{
+  count: number;
+  capped: boolean;
+}> {
   try {
-    const commits = await octokit.paginate(
-      octokit.rest.repos.listCommits,
-      {
-        owner,
-        repo,
-        since,
-        per_page: PER_PAGE
-      }
+    return await countPaginatedItems(
+      octokit.paginate.iterator(
+        octokit.rest.repos.listCommits,
+        {
+          owner,
+          repo,
+          since,
+          per_page: PER_PAGE
+        }
+      ),
+      MAX_COMMITS
     );
-
-    return commits.length;
   } catch (error) {
     if (
       isGitHubApiError(error) &&
       error.status === 409
     ) {
-      return 0;
+      return {
+        count: 0,
+        capped: false
+      };
     }
 
     throw error;
@@ -112,17 +134,21 @@ async function getCommitsLast30Days(
 async function getContributorCount(
   owner: string,
   repo: string
-): Promise<number> {
-  const contributors = await octokit.paginate(
-    octokit.rest.repos.listContributors,
-    {
-      owner,
-      repo,
-      per_page: PER_PAGE
-    }
+): Promise<{
+  count: number;
+  capped: boolean;
+}> {
+  return countPaginatedItems(
+    octokit.paginate.iterator(
+      octokit.rest.repos.listContributors,
+      {
+        owner,
+        repo,
+        per_page: PER_PAGE
+      }
+    ),
+    MAX_CONTRIBUTORS
   );
-
-  return contributors.length;
 }
 
 async function getReleaseData(
@@ -132,17 +158,22 @@ async function getReleaseData(
 ): Promise<{
   releasesLast90Days: number;
   latestReleaseAt: string | null;
+  capped: boolean;
 }> {
-  const releases = await octokit.paginate(
-    octokit.rest.repos.listReleases,
-    {
-      owner,
-      repo,
-      per_page: PER_PAGE
-    }
-  );
+  const result =
+    await collectPaginatedItems(
+      octokit.paginate.iterator(
+        octokit.rest.repos.listReleases,
+        {
+          owner,
+          repo,
+          per_page: PER_PAGE
+        }
+      ),
+      MAX_RELEASES
+    );
 
-  const releaseDates = releases
+  const releaseDates = result.items
     .map(
       (release) =>
         release.published_at ??
@@ -168,7 +199,9 @@ async function getReleaseData(
   return {
     releasesLast90Days,
     latestReleaseAt:
-      releaseDates[0] ?? null
+      releaseDates[0] ?? null,
+    capped:
+      result.capped
   };
 }
 
@@ -187,8 +220,8 @@ async function getRepositoryDataUnwrapped(
 
   const [
     repositoryResponse,
-    commitsLast30Days,
-    contributors,
+    commitData,
+    contributorData,
     releaseData,
     hasReadme
   ] = await Promise.all([
@@ -248,16 +281,23 @@ async function getRepositoryDataUnwrapped(
       repository.html_url,
 
     activity: {
-      commitsLast30Days,
-      commitsCapped: false,
+      commitsLast30Days:
+        commitData.count,
 
-      contributors,
-      contributorsCapped: false,
+      commitsCapped:
+        commitData.capped,
+
+      contributors:
+        contributorData.count,
+
+      contributorsCapped:
+        contributorData.capped,
 
       releasesLast90Days:
         releaseData.releasesLast90Days,
 
-      releasesCapped: false,
+      releasesCapped:
+        releaseData.capped,
 
       latestReleaseAt:
         releaseData.latestReleaseAt,

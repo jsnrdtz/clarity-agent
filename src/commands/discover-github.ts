@@ -80,7 +80,11 @@ return [
 "",
 `Owner: ${discovery.owner}`,
 `Type: ${discovery.ownerType}`,
-`Repositories found: ${discovery.repositoriesFound}`,
+`Repositories found: ${discovery.repositoriesFound}${
+  discovery.repositoriesCapped
+    ? " (capped)"
+    : ""
+}`,
 `Active candidates: ${discovery.candidates.length}`,
 `Excluded: ${discovery.excluded.length}`,
 "",

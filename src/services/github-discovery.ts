@@ -1,6 +1,9 @@
 import { Octokit } from "octokit";
 
 import {
+  collectPaginatedItems
+} from "./capped-pagination.js";
+import {
   normalizeGitHubError
 } from "./github-error.js";
 
@@ -15,6 +18,10 @@ auth: githubToken
 );
 
 const PER_PAGE = 100;
+const MAX_REPOSITORY_PAGES = 3;
+const MAX_REPOSITORIES =
+  PER_PAGE * MAX_REPOSITORY_PAGES;
+
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 export type GitHubOwnerType =
@@ -55,6 +62,7 @@ owner: string;
 ownerType: GitHubOwnerType;
 profileUrl: string;
 repositoriesFound: number;
+repositoriesCapped: boolean;
 candidates: DiscoveredRepository[];
 excluded: DiscoveredRepository[];
 collectedAt: string;
@@ -229,9 +237,10 @@ profileResponse.data.type === "Organization"
 ? "Organization"
 : "User";
 
-const repositories =
+const repositoryResult =
+await collectPaginatedItems(
 ownerType === "Organization"
-? await octokit.paginate(
+? octokit.paginate.iterator(
 octokit.rest.repos.listForOrg,
 {
 org: owner,
@@ -241,7 +250,7 @@ direction: "desc",
 per_page: PER_PAGE
 }
 )
-: await octokit.paginate(
+: octokit.paginate.iterator(
 octokit.rest.repos.listForUser,
 {
 username: owner,
@@ -250,7 +259,12 @@ sort: "pushed",
 direction: "desc",
 per_page: PER_PAGE
 }
+),
+MAX_REPOSITORIES
 );
+
+const repositories =
+repositoryResult.items;
 
 const discovered: DiscoveredRepository[] =
 repositories.map((repository) => {
@@ -350,6 +364,9 @@ profileUrl:
 
 repositoriesFound:
   discovered.length,
+
+repositoriesCapped:
+  repositoryResult.capped,
 
 candidates,
 
