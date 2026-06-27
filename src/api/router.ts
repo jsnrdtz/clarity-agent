@@ -1,4 +1,8 @@
 import {
+  searchRegisteredAgents
+} from "../services/agent-search.js";
+
+import {
   openApiDocument
 } from "./openapi.js";
 
@@ -72,20 +76,17 @@ function sendJson(
   );
 }
 
-function getPathname(
+function getRequestUrl(
   request: IncomingMessage
-): string {
+): URL {
   const host =
     request.headers.host ??
     "localhost";
 
-  const url =
-    new URL(
-      request.url ?? "/",
-      `http://${host}`
-    );
-
-  return url.pathname;
+  return new URL(
+    request.url ?? "/",
+    `http://${host}`
+  );
 }
 
 function decodePathValue(
@@ -138,6 +139,7 @@ function sendError(
 
 async function routeGetRequest(
   pathname: string,
+  searchParams: URLSearchParams,
   response: ServerResponse
 ): Promise<void> {
   if (pathname === "/openapi.json") {
@@ -201,6 +203,25 @@ async function routeGetRequest(
           agents.length,
         agents
       }
+    );
+
+    return;
+  }
+
+  if (pathname === "/api/v1/search") {
+    const query =
+      searchParams.get("q") ??
+      "";
+
+    const search =
+      searchRegisteredAgents(
+        query
+      );
+
+    sendJson(
+      response,
+      200,
+      search
     );
 
     return;
@@ -322,11 +343,12 @@ export async function handleApiRequest(
       return;
     }
 
-    const pathname =
-      getPathname(request);
+    const requestUrl =
+      getRequestUrl(request);
 
     await routeGetRequest(
-      pathname,
+      requestUrl.pathname,
+      requestUrl.searchParams,
       response
     );
   } catch (error) {

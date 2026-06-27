@@ -109,6 +109,66 @@ export const openApiDocument = {
       }
     },
 
+    "/api/v1/search": {
+      get: {
+        tags: [
+          "Agents"
+        ],
+
+        summary:
+          "Search registered agents",
+
+        operationId:
+          "searchAgents",
+
+        parameters: [
+          {
+            name: "q",
+            in: "query",
+            required: true,
+
+            description:
+              "Agent name, slug, or alias.",
+
+            schema: {
+              type: "string",
+              minLength: 2
+            }
+          }
+        ],
+
+        responses: {
+          "200": {
+            description:
+              "Matching registered agents.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/AgentSearchResponse"
+                }
+              }
+            }
+          },
+
+          "400": {
+            description:
+              "Invalid search query.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
     "/api/v1/evaluate/{agent}": {
       get: {
         tags: [
@@ -625,6 +685,123 @@ export const openApiDocument = {
         }
       },
 
+      AgentSearchResult: {
+        type: "object",
+
+        required: [
+          "agent",
+          "github",
+          "aliases",
+          "match",
+          "evaluationUrl"
+        ],
+
+        properties: {
+          agent: {
+            $ref:
+              "#/components/schemas/AgentReference"
+          },
+
+          github: {
+            type: "object",
+            additionalProperties: true
+          },
+
+          aliases: {
+            type: "array",
+
+            items: {
+              type: "string"
+            }
+          },
+
+          match: {
+            type: "object",
+
+            required: [
+              "type",
+              "matchedOn",
+              "relevance"
+            ],
+
+            properties: {
+              type: {
+                type: "string",
+
+                enum: [
+                  "exact-slug",
+                  "exact-name",
+                  "exact-alias",
+                  "prefix",
+                  "contains"
+                ]
+              },
+
+              matchedOn: {
+                type: "string"
+              },
+
+              relevance: {
+                type: "integer",
+                minimum: 0,
+                maximum: 100
+              }
+            }
+          },
+
+          evaluationUrl: {
+            type: "string"
+          }
+        }
+      },
+
+      AgentSearchResponse: {
+        type: "object",
+
+        required: [
+          "schemaVersion",
+          "query",
+          "normalizedQuery",
+          "count",
+          "results",
+          "generatedAt"
+        ],
+
+        properties: {
+          schemaVersion: {
+            type: "string",
+            const: "1.0"
+          },
+
+          query: {
+            type: "string"
+          },
+
+          normalizedQuery: {
+            type: "string"
+          },
+
+          count: {
+            type: "integer",
+            minimum: 0
+          },
+
+          results: {
+            type: "array",
+
+            items: {
+              $ref:
+                "#/components/schemas/AgentSearchResult"
+            }
+          },
+
+          generatedAt: {
+            type: "string",
+            format: "date-time"
+          }
+        }
+      },
+
       AgentEvaluation: {
         type: "object",
 
@@ -954,6 +1131,7 @@ export const openApiDocument = {
                 enum: [
                   "AGENT_NOT_FOUND",
                   "INVALID_COMPARISON",
+                  "INVALID_SEARCH_QUERY",
                   "GITHUB_OWNER_NOT_FOUND",
                   "GITHUB_REPOSITORY_NOT_FOUND",
                   "GITHUB_RATE_LIMITED",

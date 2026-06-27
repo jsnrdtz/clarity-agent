@@ -27,6 +27,7 @@ test(
         "/health",
         "/openapi.json",
         "/api/v1/agents",
+        "/api/v1/search",
         "/api/v1/evaluate/{agent}",
         "/api/v1/ranking",
         "/api/v1/compare/{left}/{right}"
@@ -55,6 +56,7 @@ test(
       [
         "AGENT_NOT_FOUND",
         "INVALID_COMPARISON",
+        "INVALID_SEARCH_QUERY",
         "GITHUB_OWNER_NOT_FOUND",
         "GITHUB_REPOSITORY_NOT_FOUND",
         "GITHUB_RATE_LIMITED",

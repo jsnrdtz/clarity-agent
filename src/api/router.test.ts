@@ -442,3 +442,73 @@ test(
     );
   }
 );
+
+
+test(
+  "searches registered agents by alias",
+  async () => {
+    const {
+      response,
+      body
+    } =
+      await getJson(
+        "/api/v1/search?q=privacy"
+      );
+
+    assert.equal(
+      response.status,
+      200
+    );
+
+    assert.equal(
+      body.count,
+      1
+    );
+
+    const results =
+      body.results as Array<{
+        agent: {
+          slug: string;
+        };
+      }>;
+
+    assert.equal(
+      results[0]?.agent.slug,
+      "prxvt"
+    );
+  }
+);
+
+test(
+  "rejects a missing search query",
+  async () => {
+    const {
+      response,
+      body
+    } =
+      await getJson(
+        "/api/v1/search"
+      );
+
+    assert.equal(
+      response.status,
+      400
+    );
+
+    const error =
+      body.error as {
+        code: string;
+        retryable: boolean;
+      };
+
+    assert.equal(
+      error.code,
+      "INVALID_SEARCH_QUERY"
+    );
+
+    assert.equal(
+      error.retryable,
+      false
+    );
+  }
+);
