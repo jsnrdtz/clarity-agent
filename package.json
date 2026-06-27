@@ -1,13 +1,17 @@
 {
   "name": "clarity-agent",
   "version": "1.0.0",
-  "description": "Intelligence for the AI agent economy \u2014 discover, compare, and rank autonomous agents using verifiable data.",
+  "description": "Intelligence for the AI agent economy — discover, compare, and rank autonomous agents using verifiable data.",
   "scripts": {
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "api": "tsx src/server.ts",
     "test": "node --import tsx --test src/api/*.test.ts src/scoring/*.test.ts src/services/*.test.ts",
-    "refresh": "tsx src/index.ts refresh"
+    "refresh": "tsx src/index.ts refresh",
+    "start": "node dist/server.js",
+    "start:cli": "node dist/index.js",
+    "refresh:production": "node dist/index.js refresh"
   },
   "repository": {
     "type": "git",
