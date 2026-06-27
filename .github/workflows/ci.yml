@@ -1,4 +1,4 @@
-name: Clarity CI
+name: CI
 
 on:
   push:
@@ -6,21 +6,17 @@ on:
       - main
 
   pull_request:
-    branches:
-      - main
-
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: clarity-ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Typecheck and tests
+  verify:
+    name: Typecheck and test
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -31,7 +27,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "24.x"
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
