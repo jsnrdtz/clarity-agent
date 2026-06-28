@@ -52,7 +52,6 @@ Discovery sources such as Bankr create candidates. They do not automatically pro
 
 ## Current architecture
 
-```text
 Registered agents
         |
         v
@@ -81,11 +80,9 @@ GitHub Score        Evidence Confidence
         |
         v
 Persistent snapshots and public API
-````
 
 Candidate discovery follows a separate review-first pipeline:
 
-```text
 External source
       |
       v
@@ -102,7 +99,6 @@ Manual or reviewed verification
       |
       v
 Trusted registry
-```
 
 ## Registered agents
 
@@ -132,25 +128,23 @@ The registry is intentionally small and manually verified.
 
 ### Example requests
 
-```bash
+bash
 curl \
   "https://clarity-agent-production.up.railway.app/api/v1/agents"
-```
 
-```bash
+
+bash
 curl \
   "https://clarity-agent-production.up.railway.app/api/v1/evaluate/aeon"
-```
 
-```bash
+bash
 curl \
   "https://clarity-agent-production.up.railway.app/api/v1/compare/aeon/gitlawb"
-```
 
-```bash
+bash
 curl \
   "https://clarity-agent-production.up.railway.app/api/v1/ranking"
-```
+
 
 ## Local development
 
@@ -162,31 +156,31 @@ curl \
 
 ### Install
 
-```bash
+bash
 git clone https://github.com/jsnrdtz/clarity-agent.git
 cd clarity-agent
 npm install
-```
+
 
 ### Verify the project
 
-```bash
+bash
 npm run typecheck
 npm test
 npm run build
-```
+
 
 ### Start the API
 
-```bash
+bash
 PORT=3000 npm run api
-```
+
 
 Then verify it:
 
-```bash
+bash
 curl http://localhost:3000/health
-```
+
 
 ## Environment variables
 
@@ -210,28 +204,28 @@ A token is not committed to the repository.
 
 Set it in the current shell:
 
-```bash
+bash
 export GITHUB_TOKEN="your-token"
-```
+
 
 ### `CLARITY_REFRESH_TOKEN`
 
 Protects:
 
-```text
+text
 POST /api/v1/admin/refresh
-```
+
 
 The configured token must contain at least 32 characters.
 
 Example request:
 
-```bash
+bash
 curl \
   --request POST \
   --header "Authorization: Bearer ${CLARITY_REFRESH_TOKEN}" \
   "http://localhost:3000/api/v1/admin/refresh"
-```
+
 
 Never commit the real token.
 
@@ -241,15 +235,15 @@ Controls whether Clarity trusts proxy headers when creating per-client rate-limi
 
 Keep it disabled when the Node.js process is exposed directly:
 
-```bash
+bash
 export CLARITY_TRUST_PROXY=false
-```
+
 
 Enable it only behind a trusted reverse proxy such as Railway:
 
-```bash
+bash
 export CLARITY_TRUST_PROXY=true
-```
+
 
 When enabled, Clarity prefers `X-Real-IP` and falls back to the first address in `X-Forwarded-For`.
 
@@ -358,9 +352,7 @@ Successful evaluations are written to filesystem snapshots.
 
 Default directory:
 
-```text
 data/snapshots
-```
 
 Snapshot writes are atomic:
 
@@ -382,9 +374,7 @@ Ranking and comparison only use snapshots within the configured freshness window
 
 Production snapshots are refreshed through:
 
-```text
 POST /api/v1/admin/refresh
-```
 
 The route:
 
@@ -440,9 +430,7 @@ A Bankr profile ID identifies the Bankr profile.
 
 A token identity is represented as:
 
-```text
 chainId:tokenAddress
-```
 
 Multiple Bankr profiles may reference the same token. Clarity therefore does not use token identity as the unique project identifier.
 
@@ -452,7 +440,7 @@ Bankr candidates are not automatically added to the trusted registry.
 
 API errors use a stable JSON structure:
 
-```json
+json
 {
   "error": {
     "code": "AGENT_NOT_FOUND",
@@ -460,7 +448,7 @@ API errors use a stable JSON structure:
     "retryable": false
   }
 }
-```
+
 
 Errors may also contain structured `details`.
 
@@ -468,19 +456,18 @@ Errors may also contain structured `details`.
 
 Build the image:
 
-```bash
+bash
 docker build -t clarity-agent .
-```
 
 Run it:
 
-```bash
+bash
 docker run \
   --rm \
   --publish 3000:3000 \
   --env GITHUB_TOKEN \
   clarity-agent
-```
+
 
 The production container:
 
@@ -496,9 +483,7 @@ The current production deployment uses Railway.
 
 Persistent application data is mounted at:
 
-```text
 /app/data
-```
 
 Production configuration includes:
 
