@@ -1,0 +1,225 @@
+name: Refresh production snapshots
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-snapshot-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Refresh agent snapshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      CLARITY_API_URL: https://clarity-agent-production.up.railway.app
+
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Refresh every registered agent
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for AGENT in \
+            aeon \
+            prxvt \
+            gitlawb \
+            ethy
+          do
+            echo
+            echo "===== ${AGENT} ====="
+
+            RESPONSE_FILE="/tmp/clarity-${AGENT}.json"
+
+            curl \
+              --fail \
+              --show-error \
+              --silent \
+              --max-time 180 \
+              "${CLARITY_API_URL}/api/v1/evaluate/${AGENT}" \
+              > "${RESPONSE_FILE}"
+
+            AGENT="${AGENT}" \
+            RESPONSE_FILE="${RESPONSE_FILE}" \
+            node <<'NODE'
+          const fs =
+            require("node:fs");
+
+          const agent =
+            process.env.AGENT;
+
+          const responseFile =
+            process.env.RESPONSE_FILE;
+
+          if (
+            !agent ||
+            !responseFile
+          ) {
+            throw new Error(
+              "Refresh verification environment is incomplete."
+            );
+          }
+
+          const response =
+            JSON.parse(
+              fs.readFileSync(
+                responseFile,
+                "utf8"
+              )
+            );
+
+          const delivery =
+            response.delivery;
+
+          console.log(
+            JSON.stringify(
+              {
+                agent,
+                source:
+                  delivery?.source ?? null,
+                stale:
+                  delivery?.stale ?? null,
+                snapshotSavedAt:
+                  delivery?.snapshotSavedAt ?? null,
+                liveError:
+                  delivery?.liveError ?? null
+              },
+              null,
+              2
+            )
+          );
+
+          if (
+            delivery?.source !== "live"
+          ) {
+            throw new Error(
+              `${agent}: expected a live evaluation.`
+            );
+          }
+
+          if (
+            delivery.stale !== false
+          ) {
+            throw new Error(
+              `${agent}: live evaluation was marked stale.`
+            );
+          }
+
+          if (
+            typeof delivery.snapshotSavedAt !== "string" ||
+            delivery.snapshotSavedAt.length === 0
+          ) {
+            throw new Error(
+              `${agent}: snapshot was not saved.`
+            );
+          }
+
+          if (
+            delivery.liveError !== null
+          ) {
+            throw new Error(
+              `${agent}: live evaluation returned an error.`
+            );
+          }
+          NODE
+          done
+
+      - name: Verify production ranking
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --max-time 180 \
+            "${CLARITY_API_URL}/api/v1/ranking" \
+            > /tmp/clarity-ranking.json
+
+          node <<'NODE'
+          const fs =
+            require("node:fs");
+
+          const response =
+            JSON.parse(
+              fs.readFileSync(
+                "/tmp/clarity-ranking.json",
+                "utf8"
+              )
+            );
+
+          console.log(
+            JSON.stringify(
+              {
+                totals:
+                  response.totals,
+                ranked:
+                  response.ranked?.map(
+                    (entry) => ({
+                      rank:
+                        entry.rank,
+                      slug:
+                        entry.agent?.slug,
+                      githubScore:
+                        entry.githubScore,
+                      evaluationCollectedAt:
+                        entry.evaluationCollectedAt
+                    })
+                  ),
+                unranked:
+                  response.unranked?.map(
+                    (entry) => ({
+                      slug:
+                        entry.agent?.slug,
+                      confidence:
+                        entry.confidence,
+                      reason:
+                        entry.reason
+                    })
+                  ),
+                generatedAt:
+                  response.generatedAt
+              },
+              null,
+              2
+            )
+          );
+
+          if (
+            response.totals?.registered !== 4
+          ) {
+            throw new Error(
+              "Expected four registered agents."
+            );
+          }
+
+          if (
+            response.totals?.ranked !== 3
+          ) {
+            throw new Error(
+              "Expected three ranked agents."
+            );
+          }
+
+          if (
+            response.totals?.unranked !== 1
+          ) {
+            throw new Error(
+              "Expected one unranked agent."
+            );
+          }
+          NODE
