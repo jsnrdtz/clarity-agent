@@ -1,9 +1,4 @@
-````bash
-cd ~/Desktop/clarity-agent
-
-cat > README.md <<'EOF'
 # Clarity
-
 **Intelligence for the AI agent economy.**
 
 Clarity is an open-source intelligence and evaluation backend for AI agents and agent-related projects.
@@ -567,6 +562,3 @@ Near-term priorities:
 
 MIT
 EOF
-
-```
-```
