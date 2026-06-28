@@ -23,119 +23,180 @@ jobs:
       CLARITY_API_URL: https://clarity-agent-production.up.railway.app
 
     steps:
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
-      - name: Refresh every registered agent
+      - name: Refresh production snapshots
         shell: bash
+        env:
+          CLARITY_REFRESH_TOKEN: ${{ secrets.CLARITY_REFRESH_TOKEN }}
         run: |
           set -euo pipefail
 
-          for AGENT in \
-            aeon \
-            prxvt \
-            gitlawb \
-            ethy
-          do
-            echo
-            echo "===== ${AGENT} ====="
+          if [ -z "${CLARITY_REFRESH_TOKEN:-}" ]; then
+            echo "CLARITY_REFRESH_TOKEN is not configured."
+            exit 1
+          fi
 
-            RESPONSE_FILE="/tmp/clarity-${AGENT}.json"
+          RESPONSE_FILE="/tmp/clarity-refresh-report.json"
 
+          STATUS="$(
             curl \
-              --fail \
-              --show-error \
               --silent \
-              --max-time 180 \
-              "${CLARITY_API_URL}/api/v1/evaluate/${AGENT}" \
-              > "${RESPONSE_FILE}"
+              --show-error \
+              --max-time 300 \
+              --output "${RESPONSE_FILE}" \
+              --write-out '%{http_code}' \
+              --request POST \
+              --header \
+                "Authorization: Bearer ${CLARITY_REFRESH_TOKEN}" \
+              "${CLARITY_API_URL}/api/v1/admin/refresh"
+          )"
 
-            AGENT="${AGENT}" \
-            RESPONSE_FILE="${RESPONSE_FILE}" \
-            node <<'NODE'
+          echo "Refresh endpoint returned HTTP ${STATUS}."
+
+          if [ "${STATUS}" != "200" ]; then
+            cat "${RESPONSE_FILE}"
+            echo
+            exit 1
+          fi
+
+          node <<'NODE'
           const fs =
             require("node:fs");
 
-          const agent =
-            process.env.AGENT;
-
-          const responseFile =
-            process.env.RESPONSE_FILE;
-
-          if (
-            !agent ||
-            !responseFile
-          ) {
-            throw new Error(
-              "Refresh verification environment is incomplete."
-            );
-          }
-
-          const response =
+          const report =
             JSON.parse(
               fs.readFileSync(
-                responseFile,
+                "/tmp/clarity-refresh-report.json",
                 "utf8"
               )
             );
 
-          const delivery =
-            response.delivery;
+          const results =
+            Array.isArray(
+              report.results
+            )
+              ? report.results
+              : [];
 
           console.log(
             JSON.stringify(
               {
-                agent,
-                source:
-                  delivery?.source ?? null,
-                stale:
-                  delivery?.stale ?? null,
-                snapshotSavedAt:
-                  delivery?.snapshotSavedAt ?? null,
-                liveError:
-                  delivery?.liveError ?? null
+                schemaVersion:
+                  report.schemaVersion,
+
+                startedAt:
+                  report.startedAt,
+
+                completedAt:
+                  report.completedAt,
+
+                durationMs:
+                  report.durationMs,
+
+                totals:
+                  report.totals,
+
+                results:
+                  results.map(
+                    (result) => ({
+                      slug:
+                        result.agent?.slug,
+
+                      status:
+                        result.status,
+
+                      snapshotSavedAt:
+                        result.snapshotSavedAt ??
+                        null,
+
+                      error:
+                        result.error ??
+                        null
+                    })
+                  )
               },
               null,
               2
             )
           );
 
+          const registered =
+            report.totals?.registered;
+
+          const refreshed =
+            report.totals?.refreshed;
+
+          const failed =
+            report.totals?.failed;
+
           if (
-            delivery?.source !== "live"
+            report.schemaVersion !== "1.0"
           ) {
             throw new Error(
-              `${agent}: expected a live evaluation.`
+              "Unexpected refresh report schema version."
             );
           }
 
           if (
-            delivery.stale !== false
+            !Number.isInteger(
+              registered
+            ) ||
+            registered <= 0
           ) {
             throw new Error(
-              `${agent}: live evaluation was marked stale.`
+              "Invalid registered-agent count."
             );
           }
 
           if (
-            typeof delivery.snapshotSavedAt !== "string" ||
-            delivery.snapshotSavedAt.length === 0
+            refreshed !== registered
           ) {
             throw new Error(
-              `${agent}: snapshot was not saved.`
+              `Expected ${registered} refreshed agents, received ${refreshed}.`
+            );
+          }
+
+          if (failed !== 0) {
+            throw new Error(
+              `Refresh contains ${failed} failed agents.`
             );
           }
 
           if (
-            delivery.liveError !== null
+            results.length !==
+            registered
           ) {
             throw new Error(
-              `${agent}: live evaluation returned an error.`
+              "Refresh result count does not match the registry."
             );
+          }
+
+          for (
+            const result
+            of results
+          ) {
+            if (
+              result.status !==
+              "refreshed"
+            ) {
+              throw new Error(
+                `${result.agent?.slug ?? "unknown"}: refresh failed.`
+              );
+            }
+
+            if (
+              typeof result
+                .snapshotSavedAt !==
+                "string" ||
+              result
+                .snapshotSavedAt
+                .length === 0
+            ) {
+              throw new Error(
+                `${result.agent?.slug ?? "unknown"}: snapshot timestamp is missing.`
+              );
+            }
           }
           NODE
-          done
 
       - name: Verify production ranking
         shell: bash
@@ -154,7 +215,15 @@ jobs:
           const fs =
             require("node:fs");
 
-          const response =
+          const refreshReport =
+            JSON.parse(
+              fs.readFileSync(
+                "/tmp/clarity-refresh-report.json",
+                "utf8"
+              )
+            );
+
+          const ranking =
             JSON.parse(
               fs.readFileSync(
                 "/tmp/clarity-ranking.json",
@@ -162,64 +231,129 @@ jobs:
               )
             );
 
+          const ranked =
+            Array.isArray(
+              ranking.ranked
+            )
+              ? ranking.ranked
+              : [];
+
+          const unranked =
+            Array.isArray(
+              ranking.unranked
+            )
+              ? ranking.unranked
+              : [];
+
           console.log(
             JSON.stringify(
               {
                 totals:
-                  response.totals,
+                  ranking.totals,
+
                 ranked:
-                  response.ranked?.map(
+                  ranked.map(
                     (entry) => ({
                       rank:
                         entry.rank,
+
                       slug:
                         entry.agent?.slug,
+
                       githubScore:
                         entry.githubScore,
+
+                      sourceCollectedAt:
+                        entry.sourceCollectedAt,
+
                       evaluationCollectedAt:
                         entry.evaluationCollectedAt
                     })
                   ),
+
                 unranked:
-                  response.unranked?.map(
+                  unranked.map(
                     (entry) => ({
                       slug:
                         entry.agent?.slug,
+
+                      githubScore:
+                        entry.githubScore,
+
                       confidence:
                         entry.confidence,
+
                       reason:
-                        entry.reason
+                        entry.reason,
+
+                      sourceCollectedAt:
+                        entry.sourceCollectedAt,
+
+                      evaluationCollectedAt:
+                        entry.evaluationCollectedAt
                     })
                   ),
+
                 generatedAt:
-                  response.generatedAt
+                  ranking.generatedAt
               },
               null,
               2
             )
           );
 
+          const registered =
+            ranking.totals?.registered;
+
           if (
-            response.totals?.registered !== 4
+            registered !==
+            refreshReport
+              .totals
+              ?.registered
           ) {
             throw new Error(
-              "Expected four registered agents."
+              "Ranking registry count does not match the refresh report."
             );
           }
 
           if (
-            response.totals?.ranked !== 3
+            ranking.totals?.ranked +
+              ranking.totals?.unranked !==
+            registered
           ) {
             throw new Error(
-              "Expected three ranked agents."
+              "Ranking totals do not match the registry."
             );
           }
 
           if (
-            response.totals?.unranked !== 1
+            ranked.length +
+              unranked.length !==
+            registered
           ) {
             throw new Error(
-              "Expected one unranked agent."
+              "Ranking entry count does not match the registry."
             );
+          }
+
+          for (
+            const entry
+            of [
+              ...ranked,
+              ...unranked
+            ]
+          ) {
+            if (
+              typeof entry
+                .sourceCollectedAt !==
+                "string" ||
+              typeof entry
+                .evaluationCollectedAt !==
+                "string"
+            ) {
+              throw new Error(
+                `${entry.agent?.slug ?? "unknown"}: freshness metadata is missing.`
+              );
+            }
           }
           NODE
