@@ -52,7 +52,7 @@ test(
       () => {
         authenticateAdminRefresh(
           undefined,
-          undefined
+          ""
         );
       },
 
