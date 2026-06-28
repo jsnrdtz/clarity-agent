@@ -1,3 +1,49 @@
+const rateLimitResponseHeaders = {
+  "X-RateLimit-Limit": {
+    description:
+      "Maximum requests allowed in the current window.",
+
+    schema: {
+      type: "integer",
+      minimum: 1
+    }
+  },
+
+  "X-RateLimit-Remaining": {
+    description:
+      "Requests remaining in the current window.",
+
+    schema: {
+      type: "integer",
+      minimum: 0
+    }
+  },
+
+  "X-RateLimit-Reset": {
+    description:
+      "Unix timestamp in seconds when the current window resets.",
+
+    schema: {
+      type: "integer",
+      minimum: 0
+    }
+  }
+} as const;
+
+const rateLimitExceededResponseHeaders = {
+  ...rateLimitResponseHeaders,
+
+  "Retry-After": {
+    description:
+      "Seconds until another request may be attempted.",
+
+    schema: {
+      type: "integer",
+      minimum: 1
+    }
+  }
+} as const;
+
 export const openApiDocument = {
   openapi: "3.1.0",
 
@@ -209,6 +255,9 @@ export const openApiDocument = {
             description:
               "Structured agent evaluation.",
 
+            headers:
+              rateLimitResponseHeaders,
+
             content: {
               "application/json": {
                 schema: {
@@ -235,7 +284,10 @@ export const openApiDocument = {
 
           "429": {
             description:
-              "GitHub API rate limit exceeded.",
+              "Clarity request limit or upstream GitHub API limit exceeded.",
+
+            headers:
+              rateLimitExceededResponseHeaders,
 
             content: {
               "application/json": {
@@ -359,11 +411,31 @@ export const openApiDocument = {
             description:
               "Eligible agents are ranked while low-confidence agents are returned separately.",
 
+            headers:
+              rateLimitResponseHeaders,
+
             content: {
               "application/json": {
                 schema: {
                   $ref:
                     "#/components/schemas/RankingResponse"
+                }
+              }
+            }
+          },
+
+          "429": {
+            description:
+              "Ranking request limit exceeded.",
+
+            headers:
+              rateLimitExceededResponseHeaders,
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -424,6 +496,9 @@ export const openApiDocument = {
             description:
               "Evidence-aware comparison.",
 
+            headers:
+              rateLimitResponseHeaders,
+
             content: {
               "application/json": {
                 schema: {
@@ -451,6 +526,23 @@ export const openApiDocument = {
           "404": {
             description:
               "One of the agents is not registered.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+
+          "429": {
+            description:
+              "Comparison request limit exceeded.",
+
+            headers:
+              rateLimitExceededResponseHeaders,
 
             content: {
               "application/json": {
@@ -1308,6 +1400,7 @@ export const openApiDocument = {
                   "REFRESH_AUTHENTICATION_FAILED",
                   "REFRESH_NOT_CONFIGURED",
                   "REFRESH_ALREADY_RUNNING",
+                  "RATE_LIMIT_EXCEEDED",
                   "GITHUB_OWNER_NOT_FOUND",
                   "GITHUB_REPOSITORY_NOT_FOUND",
                   "GITHUB_RATE_LIMITED",

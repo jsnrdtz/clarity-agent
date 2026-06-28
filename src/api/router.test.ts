@@ -11,12 +11,22 @@ import type {
 
 import test, {
   after,
-  before
+  before,
+  beforeEach
 } from "node:test";
 
 import {
   handleApiRequest
 } from "./router.js";
+
+import {
+  DEFAULT_API_RATE_LIMIT_POLICIES,
+  type ApiRateLimitPolicies
+} from "./request-rate-limit.js";
+
+import {
+  createRateLimiter
+} from "../services/rate-limit.js";
 
 import type {
   AgentRefreshReport
@@ -32,6 +42,43 @@ const VALID_REFRESH_TOKEN =
 
 let adminRefreshCalls =
   0;
+
+const TEST_NOW =
+  1_750_000_000_000;
+
+const testRateLimiter =
+  createRateLimiter(
+    {
+      now:
+        () => TEST_NOW
+    }
+  );
+
+function createTestRateLimitPolicies():
+ApiRateLimitPolicies {
+  return {
+    evaluate: {
+      ...DEFAULT_API_RATE_LIMIT_POLICIES
+        .evaluate
+    },
+
+    compare: {
+      ...DEFAULT_API_RATE_LIMIT_POLICIES
+        .compare
+    },
+
+    ranking: {
+      ...DEFAULT_API_RATE_LIMIT_POLICIES
+        .ranking
+    }
+  };
+}
+
+let testRateLimitPolicies =
+  createTestRateLimitPolicies();
+
+let testTrustProxy =
+  true;
 
 const testRefreshReport:
 AgentRefreshReport = {
@@ -85,6 +132,18 @@ function setTestRefreshToken(
   };
 }
 
+beforeEach(
+  () => {
+    testRateLimiter.clear();
+
+    testRateLimitPolicies =
+      createTestRateLimitPolicies();
+
+    testTrustProxy =
+      true;
+  }
+);
+
 before(
   async () => {
     server =
@@ -100,7 +159,16 @@ before(
                     1;
 
                   return testRefreshReport;
-                }
+                },
+
+              rateLimiter:
+                testRateLimiter,
+
+              rateLimitPolicies:
+                testRateLimitPolicies,
+
+              trustProxy:
+                testTrustProxy
             }
           );
         }
@@ -806,6 +874,246 @@ test(
     assert.equal(
       error.code,
       "METHOD_NOT_ALLOWED"
+    );
+  }
+);
+
+
+test(
+  "rate limits expensive routes by forwarded client address",
+  async () => {
+    testRateLimitPolicies
+      .evaluate = {
+        limit: 1,
+        windowMs: 10_000
+      };
+
+    const headers = {
+      "X-Forwarded-For":
+        "203.0.113.10"
+    };
+
+    const first =
+      await getJson(
+        "/api/v1/evaluate/not-a-real-agent",
+        {
+          headers
+        }
+      );
+
+    assert.equal(
+      first.response.status,
+      404
+    );
+
+    assert.equal(
+      first.response.headers.get(
+        "x-ratelimit-limit"
+      ),
+      "1"
+    );
+
+    assert.equal(
+      first.response.headers.get(
+        "x-ratelimit-remaining"
+      ),
+      "0"
+    );
+
+    const second =
+      await getJson(
+        "/api/v1/evaluate/not-a-real-agent",
+        {
+          headers
+        }
+      );
+
+    assert.equal(
+      second.response.status,
+      429
+    );
+
+    assert.equal(
+      second.response.headers.get(
+        "retry-after"
+      ),
+      "10"
+    );
+
+    assert.equal(
+      second.response.headers.get(
+        "x-ratelimit-limit"
+      ),
+      "1"
+    );
+
+    assert.equal(
+      second.response.headers.get(
+        "x-ratelimit-remaining"
+      ),
+      "0"
+    );
+
+    const error =
+      second.body.error as {
+        code: string;
+        retryable: boolean;
+
+        details: {
+          scope: string;
+          limit: number;
+          remaining: number;
+          retryAfterSeconds: number;
+        };
+      };
+
+    assert.equal(
+      error.code,
+      "RATE_LIMIT_EXCEEDED"
+    );
+
+    assert.equal(
+      error.retryable,
+      true
+    );
+
+    assert.deepEqual(
+      error.details,
+      {
+        scope: "evaluate",
+        limit: 1,
+        remaining: 0,
+
+        resetAt:
+          new Date(
+            TEST_NOW +
+            10_000
+          ).toISOString(),
+
+        retryAfterSeconds:
+          10
+      }
+    );
+  }
+);
+
+test(
+  "keeps forwarded clients in separate rate limit buckets",
+  async () => {
+    testRateLimitPolicies
+      .evaluate = {
+        limit: 1,
+        windowMs: 10_000
+      };
+
+    const firstClient =
+      await getJson(
+        "/api/v1/evaluate/not-a-real-agent",
+        {
+          headers: {
+            "X-Forwarded-For":
+              "203.0.113.20"
+          }
+        }
+      );
+
+    const secondClient =
+      await getJson(
+        "/api/v1/evaluate/not-a-real-agent",
+        {
+          headers: {
+            "X-Forwarded-For":
+              "203.0.113.21"
+          }
+        }
+      );
+
+    assert.equal(
+      firstClient.response.status,
+      404
+    );
+
+    assert.equal(
+      secondClient.response.status,
+      404
+    );
+  }
+);
+
+test(
+  "ignores forwarded addresses when proxy trust is disabled",
+  async () => {
+    testRateLimitPolicies
+      .evaluate = {
+        limit: 1,
+        windowMs: 10_000
+      };
+
+    testTrustProxy =
+      false;
+
+    const first =
+      await getJson(
+        "/api/v1/evaluate/not-a-real-agent",
+        {
+          headers: {
+            "X-Forwarded-For":
+              "203.0.113.30"
+          }
+        }
+      );
+
+    const second =
+      await getJson(
+        "/api/v1/evaluate/not-a-real-agent",
+        {
+          headers: {
+            "X-Forwarded-For":
+              "203.0.113.31"
+          }
+        }
+      );
+
+    assert.equal(
+      first.response.status,
+      404
+    );
+
+    assert.equal(
+      second.response.status,
+      429
+    );
+  }
+);
+
+test(
+  "does not rate limit inexpensive public routes",
+  async () => {
+    const first =
+      await getJson(
+        "/health"
+      );
+
+    const second =
+      await getJson(
+        "/health"
+      );
+
+    assert.equal(
+      first.response.status,
+      200
+    );
+
+    assert.equal(
+      second.response.status,
+      200
+    );
+
+    assert.equal(
+      second.response.headers.get(
+        "x-ratelimit-limit"
+      ),
+      null
     );
   }
 );

@@ -15,6 +15,17 @@ import {
   runAdminRefresh
 } from "../services/admin-refresh.js";
 
+import {
+  applyRequestRateLimit,
+  DEFAULT_API_RATE_LIMIT_POLICIES,
+  type ApiRateLimitPolicies
+} from "./request-rate-limit.js";
+
+import {
+  createRateLimiter,
+  type RateLimiter
+} from "../services/rate-limit.js";
+
 import type {
   IncomingMessage,
   ServerResponse
@@ -36,19 +47,44 @@ import {
 export type ApiDependencies = {
   runAdminRefresh:
     typeof runAdminRefresh;
+
+  rateLimiter:
+    RateLimiter;
+
+  rateLimitPolicies:
+    ApiRateLimitPolicies;
+
+  trustProxy:
+    boolean;
 };
 
-const defaultApiDependencies:
-ApiDependencies = {
-  runAdminRefresh
-};
+const defaultRateLimiter =
+  createRateLimiter();
+
+function getDefaultApiDependencies():
+ApiDependencies {
+  return {
+    runAdminRefresh,
+
+    rateLimiter:
+      defaultRateLimiter,
+
+    rateLimitPolicies:
+      DEFAULT_API_RATE_LIMIT_POLICIES,
+
+    trustProxy:
+      process.env
+        .CLARITY_TRUST_PROXY ===
+      "true"
+  };
+}
 
 function resolveApiDependencies(
   overrides:
     Partial<ApiDependencies>
 ): ApiDependencies {
   return {
-    ...defaultApiDependencies,
+    ...getDefaultApiDependencies(),
     ...overrides
   };
 }
@@ -69,6 +105,16 @@ function setCommonHeaders(
   response.setHeader(
     "Access-Control-Allow-Headers",
     "Content-Type, Authorization"
+  );
+
+  response.setHeader(
+    "Access-Control-Expose-Headers",
+    [
+      "Retry-After",
+      "X-RateLimit-Limit",
+      "X-RateLimit-Remaining",
+      "X-RateLimit-Reset"
+    ].join(", ")
   );
 
   response.setHeader(
@@ -190,6 +236,35 @@ function sendError(
       "WWW-Authenticate",
       "Bearer"
     );
+  }
+
+  if (
+    normalized.code ===
+    "RATE_LIMIT_EXCEEDED"
+  ) {
+    const retryAfterSeconds =
+      normalized.details
+        ?.retryAfterSeconds;
+
+    if (
+      typeof retryAfterSeconds ===
+        "number" &&
+      Number.isFinite(
+        retryAfterSeconds
+      )
+    ) {
+      response.setHeader(
+        "Retry-After",
+        String(
+          Math.max(
+            1,
+            Math.ceil(
+              retryAfterSeconds
+            )
+          )
+        )
+      );
+    }
   }
 
   sendJson(
@@ -463,6 +538,28 @@ export async function handleApiRequest(
 
         return;
       }
+
+      applyRequestRateLimit(
+        {
+          request,
+          response,
+
+          pathname:
+            requestUrl.pathname,
+
+          limiter:
+            dependencies
+              .rateLimiter,
+
+          policies:
+            dependencies
+              .rateLimitPolicies,
+
+          trustProxy:
+            dependencies
+              .trustProxy
+        }
+      );
 
       await routeGetRequest(
         requestUrl.pathname,

@@ -61,6 +61,7 @@ test(
         "REFRESH_AUTHENTICATION_FAILED",
         "REFRESH_NOT_CONFIGURED",
         "REFRESH_ALREADY_RUNNING",
+        "RATE_LIMIT_EXCEEDED",
         "GITHUB_OWNER_NOT_FOUND",
         "GITHUB_REPOSITORY_NOT_FOUND",
         "GITHUB_RATE_LIMITED",
@@ -104,5 +105,78 @@ test(
           "Administrative refresh token."
       }
     );
+  }
+);
+
+
+test(
+  "documents public request rate limits",
+  () => {
+    const operations = [
+      openApiDocument
+        .paths[
+          "/api/v1/evaluate/{agent}"
+        ]
+        .get,
+
+      openApiDocument
+        .paths[
+          "/api/v1/ranking"
+        ]
+        .get,
+
+      openApiDocument
+        .paths[
+          "/api/v1/compare/{left}/{right}"
+        ]
+        .get
+    ];
+
+    const successHeaders = [
+      "X-RateLimit-Limit",
+      "X-RateLimit-Remaining",
+      "X-RateLimit-Reset"
+    ].sort();
+
+    const exceededHeaders = [
+      ...successHeaders,
+      "Retry-After"
+    ].sort();
+
+    for (
+      const operation
+      of operations
+    ) {
+      assert.ok(
+        operation
+          .responses[
+            "429"
+          ]
+      );
+
+      assert.deepEqual(
+        Object.keys(
+          operation
+            .responses[
+              "200"
+            ]
+            .headers
+        ).sort(),
+
+        successHeaders
+      );
+
+      assert.deepEqual(
+        Object.keys(
+          operation
+            .responses[
+              "429"
+            ]
+            .headers
+        ).sort(),
+
+        exceededHeaders
+      );
+    }
   }
 );
