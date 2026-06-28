@@ -10,6 +10,11 @@ import {
   toClarityError
 } from "../errors/clarity-error.js";
 
+import {
+  authenticateAdminRefresh,
+  runAdminRefresh
+} from "../services/admin-refresh.js";
+
 import type {
   IncomingMessage,
   ServerResponse
@@ -28,6 +33,26 @@ import {
   buildAgentRanking
 } from "../services/agent-ranking.js";
 
+export type ApiDependencies = {
+  runAdminRefresh:
+    typeof runAdminRefresh;
+};
+
+const defaultApiDependencies:
+ApiDependencies = {
+  runAdminRefresh
+};
+
+function resolveApiDependencies(
+  overrides:
+    Partial<ApiDependencies>
+): ApiDependencies {
+  return {
+    ...defaultApiDependencies,
+    ...overrides
+  };
+}
+
 function setCommonHeaders(
   response: ServerResponse
 ): void {
@@ -38,12 +63,12 @@ function setCommonHeaders(
 
   response.setHeader(
     "Access-Control-Allow-Methods",
-    "GET, OPTIONS"
+    "GET, POST, OPTIONS"
   );
 
   response.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type"
+    "Content-Type, Authorization"
   );
 
   response.setHeader(
@@ -95,6 +120,51 @@ function decodePathValue(
   return decodeURIComponent(value);
 }
 
+function isKnownGetPath(
+  pathname: string
+): boolean {
+  return (
+    pathname === "/openapi.json" ||
+    pathname === "/health" ||
+    pathname === "/api/v1/agents" ||
+    pathname === "/api/v1/search" ||
+    pathname === "/api/v1/ranking" ||
+    /^\/api\/v1\/compare\/[^/]+\/[^/]+$/.test(
+      pathname
+    ) ||
+    /^\/api\/v1\/evaluate\/[^/]+$/.test(
+      pathname
+    )
+  );
+}
+
+function sendMethodNotAllowed(
+  response: ServerResponse,
+  allowedMethods: string[]
+): void {
+  response.setHeader(
+    "Allow",
+    [
+      ...allowedMethods,
+      "OPTIONS"
+    ].join(", ")
+  );
+
+  sendJson(
+    response,
+    405,
+    {
+      error: {
+        code:
+          "METHOD_NOT_ALLOWED",
+
+        message:
+          "HTTP method is not supported for this route."
+      }
+    }
+  );
+}
+
 function sendError(
   response: ServerResponse,
   error: unknown
@@ -109,6 +179,16 @@ function sendError(
     console.error(
       "Unhandled API error:",
       error
+    );
+  }
+
+  if (
+    normalized.code ===
+    "REFRESH_AUTHENTICATION_FAILED"
+  ) {
+    response.setHeader(
+      "WWW-Authenticate",
+      "Bearer"
     );
   }
 
@@ -307,10 +387,56 @@ async function routeGetRequest(
   );
 }
 
+async function routePostRequest(
+  pathname: string,
+  request: IncomingMessage,
+  response: ServerResponse,
+  dependencies: ApiDependencies
+): Promise<void> {
+  if (
+    pathname ===
+    "/api/v1/admin/refresh"
+  ) {
+    authenticateAdminRefresh(
+      request.headers.authorization
+    );
+
+    const report =
+      await dependencies
+        .runAdminRefresh();
+
+    sendJson(
+      response,
+      200,
+      report
+    );
+
+    return;
+  }
+
+  sendJson(
+    response,
+    404,
+    {
+      error: {
+        code: "NOT_FOUND",
+        message: "Route not found."
+      }
+    }
+  );
+}
+
 export async function handleApiRequest(
   request: IncomingMessage,
-  response: ServerResponse
+  response: ServerResponse,
+  dependencyOverrides:
+    Partial<ApiDependencies> = {}
 ): Promise<void> {
+  const dependencies =
+    resolveApiDependencies(
+      dependencyOverrides
+    );
+
   try {
     if (request.method === "OPTIONS") {
       setCommonHeaders(response);
@@ -320,36 +446,65 @@ export async function handleApiRequest(
       return;
     }
 
-    if (request.method !== "GET") {
-      response.setHeader(
-        "Allow",
-        "GET, OPTIONS"
-      );
+    const requestUrl =
+      getRequestUrl(request);
 
-      sendJson(
-        response,
-        405,
-        {
-          error: {
-            code:
-              "METHOD_NOT_ALLOWED",
+    if (request.method === "GET") {
+      if (
+        requestUrl.pathname ===
+        "/api/v1/admin/refresh"
+      ) {
+        sendMethodNotAllowed(
+          response,
+          [
+            "POST"
+          ]
+        );
 
-            message:
-              "Only GET requests are supported."
-          }
-        }
+        return;
+      }
+
+      await routeGetRequest(
+        requestUrl.pathname,
+        requestUrl.searchParams,
+        response
       );
 
       return;
     }
 
-    const requestUrl =
-      getRequestUrl(request);
+    if (request.method === "POST") {
+      if (
+        isKnownGetPath(
+          requestUrl.pathname
+        )
+      ) {
+        sendMethodNotAllowed(
+          response,
+          [
+            "GET"
+          ]
+        );
 
-    await routeGetRequest(
-      requestUrl.pathname,
-      requestUrl.searchParams,
-      response
+        return;
+      }
+
+      await routePostRequest(
+        requestUrl.pathname,
+        request,
+        response,
+        dependencies
+      );
+
+      return;
+    }
+
+    sendMethodNotAllowed(
+      response,
+      [
+        "GET",
+        "POST"
+      ]
     );
   } catch (error) {
     sendError(

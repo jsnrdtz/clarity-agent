@@ -24,6 +24,9 @@ export const openApiDocument = {
     },
     {
       name: "Comparison"
+    },
+    {
+      name: "Administration"
     }
   ],
 
@@ -261,6 +264,84 @@ export const openApiDocument = {
       }
     },
 
+    "/api/v1/admin/refresh": {
+      post: {
+        tags: [
+          "Administration"
+        ],
+
+        summary:
+          "Refresh all production snapshots",
+
+        operationId:
+          "refreshAgentSnapshots",
+
+        security: [
+          {
+            adminBearer: []
+          }
+        ],
+
+        responses: {
+          "200": {
+            description:
+              "Snapshot refresh completed.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/AgentRefreshReport"
+                }
+              }
+            }
+          },
+
+          "401": {
+            description:
+              "Bearer authentication failed.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+
+          "409": {
+            description:
+              "Another refresh is already running.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+
+          "503": {
+            description:
+              "Administrative refresh is not configured.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
     "/api/v1/ranking": {
       get: {
         tags: [
@@ -386,7 +467,87 @@ export const openApiDocument = {
   },
 
   components: {
+    securitySchemes: {
+      adminBearer: {
+        type: "http",
+        scheme: "bearer",
+
+        description:
+          "Administrative refresh token."
+      }
+    },
+
     schemas: {
+      AgentRefreshReport: {
+        type: "object",
+
+        required: [
+          "schemaVersion",
+          "startedAt",
+          "completedAt",
+          "durationMs",
+          "totals",
+          "results"
+        ],
+
+        properties: {
+          schemaVersion: {
+            type: "string",
+            const: "1.0"
+          },
+
+          startedAt: {
+            type: "string",
+            format: "date-time"
+          },
+
+          completedAt: {
+            type: "string",
+            format: "date-time"
+          },
+
+          durationMs: {
+            type: "integer",
+            minimum: 0
+          },
+
+          totals: {
+            type: "object",
+
+            required: [
+              "registered",
+              "refreshed",
+              "failed"
+            ],
+
+            properties: {
+              registered: {
+                type: "integer",
+                minimum: 0
+              },
+
+              refreshed: {
+                type: "integer",
+                minimum: 0
+              },
+
+              failed: {
+                type: "integer",
+                minimum: 0
+              }
+            }
+          },
+
+          results: {
+            type: "array",
+
+            items: {
+              type: "object"
+            }
+          }
+        }
+      },
+
       HealthResponse: {
         type: "object",
 
@@ -1144,6 +1305,9 @@ export const openApiDocument = {
                   "AGENT_NOT_FOUND",
                   "INVALID_COMPARISON",
                   "INVALID_SEARCH_QUERY",
+                  "REFRESH_AUTHENTICATION_FAILED",
+                  "REFRESH_NOT_CONFIGURED",
+                  "REFRESH_ALREADY_RUNNING",
                   "GITHUB_OWNER_NOT_FOUND",
                   "GITHUB_REPOSITORY_NOT_FOUND",
                   "GITHUB_RATE_LIMITED",

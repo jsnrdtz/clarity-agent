@@ -29,6 +29,7 @@ test(
         "/api/v1/agents",
         "/api/v1/search",
         "/api/v1/evaluate/{agent}",
+        "/api/v1/admin/refresh",
         "/api/v1/ranking",
         "/api/v1/compare/{left}/{right}"
       ].sort()
@@ -57,6 +58,9 @@ test(
         "AGENT_NOT_FOUND",
         "INVALID_COMPARISON",
         "INVALID_SEARCH_QUERY",
+        "REFRESH_AUTHENTICATION_FAILED",
+        "REFRESH_NOT_CONFIGURED",
+        "REFRESH_ALREADY_RUNNING",
         "GITHUB_OWNER_NOT_FOUND",
         "GITHUB_REPOSITORY_NOT_FOUND",
         "GITHUB_RATE_LIMITED",
@@ -65,6 +69,40 @@ test(
         "GITHUB_UNAVAILABLE",
         "INTERNAL_SERVER_ERROR"
       ]
+    );
+  }
+);
+
+test(
+  "protects the administrative refresh endpoint",
+  () => {
+    const refreshOperation =
+      openApiDocument
+        .paths[
+          "/api/v1/admin/refresh"
+        ]
+        .post;
+
+    assert.deepEqual(
+      refreshOperation.security,
+      [
+        {
+          adminBearer: []
+        }
+      ]
+    );
+
+    assert.deepEqual(
+      openApiDocument
+        .components
+        .securitySchemes
+        .adminBearer,
+      {
+        type: "http",
+        scheme: "bearer",
+        description:
+          "Administrative refresh token."
+      }
     );
   }
 );
