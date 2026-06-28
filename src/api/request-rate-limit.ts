@@ -116,6 +116,18 @@ function normalizeClientAddress(
 function getForwardedClientAddress(
   request: IncomingMessage
 ): string | null {
+  const realClientAddress =
+    normalizeClientAddress(
+      getHeaderValue(
+        request.headers,
+        "x-real-ip"
+      )
+    );
+
+  if (realClientAddress) {
+    return realClientAddress;
+  }
+
   const forwardedFor =
     getHeaderValue(
       request.headers,
@@ -133,22 +145,8 @@ function getForwardedClientAddress(
         Boolean
       );
 
-  const normalizedForwardedAddress =
-    normalizeClientAddress(
-      firstForwardedAddress
-    );
-
-  if (
-    normalizedForwardedAddress
-  ) {
-    return normalizedForwardedAddress;
-  }
-
   return normalizeClientAddress(
-    getHeaderValue(
-      request.headers,
-      "x-real-ip"
-    )
+    firstForwardedAddress
   );
 }
 

@@ -1041,6 +1041,55 @@ test(
 );
 
 test(
+  "prefers the trusted real IP over forwarded-for",
+  async () => {
+    testRateLimitPolicies
+      .evaluate = {
+        limit: 1,
+        windowMs: 10_000
+      };
+
+    const first =
+      await getJson(
+        "/api/v1/evaluate/not-a-real-agent",
+        {
+          headers: {
+            "X-Real-IP":
+              "198.51.100.40",
+
+            "X-Forwarded-For":
+              "203.0.113.40"
+          }
+        }
+      );
+
+    const second =
+      await getJson(
+        "/api/v1/evaluate/not-a-real-agent",
+        {
+          headers: {
+            "X-Real-IP":
+              "198.51.100.40",
+
+            "X-Forwarded-For":
+              "203.0.113.41"
+          }
+        }
+      );
+
+    assert.equal(
+      first.response.status,
+      404
+    );
+
+    assert.equal(
+      second.response.status,
+      429
+    );
+  }
+);
+
+test(
   "ignores forwarded addresses when proxy trust is disabled",
   async () => {
     testRateLimitPolicies
