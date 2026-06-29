@@ -2,6 +2,16 @@ import type {
   BankrAgentProfileDetail
 } from "./bankr-client.js";
 
+import {
+  classifyBankrGitHubEvidence
+} from "./bankr-github-evidence.js";
+
+import type {
+  BankrGitHubEvidenceClassification,
+  BankrGitHubEvidenceConfidence,
+  BankrGitHubRelationship
+} from "./bankr-github-evidence.js";
+
 export type BankrGitHubEvidenceSource =
   | "description"
   | "website"
@@ -15,6 +25,15 @@ export type BankrGitHubRepository = {
   repository: string;
   url: string;
   sources: BankrGitHubEvidenceSource[];
+
+  relationship:
+    BankrGitHubRelationship;
+
+  confidence:
+    BankrGitHubEvidenceConfidence;
+
+  reasons:
+    string[];
 };
 
 export type BankrCandidateWarning =
@@ -126,6 +145,43 @@ const GITHUB_SOURCE_ORDER:
       "product-description",
       "project-update"
     ];
+
+const GITHUB_CONFIDENCE_PRIORITY:
+  Record<
+    BankrGitHubEvidenceConfidence,
+    number
+  > = {
+    high:
+      3,
+
+    medium:
+      2,
+
+    low:
+      1
+  };
+
+function getClassificationPriority(
+  classification:
+    Pick<
+      BankrGitHubEvidenceClassification,
+      "relationship" |
+      "confidence"
+    >
+): number {
+  const relationshipPriority =
+    classification.relationship ===
+      "unknown"
+      ? 0
+      : 10;
+
+  return (
+    relationshipPriority +
+    GITHUB_CONFIDENCE_PRIORITY[
+      classification.confidence
+    ]
+  );
+}
 
 function normalizeOptionalText(
   value:
@@ -400,25 +456,68 @@ extractBankrGitHubRepositories(
     of textEvidence
   ) {
     const matches =
-      evidence
-        .text
-        .match(
-          GITHUB_REPOSITORY_URL_PATTERN
-        ) ??
-      [];
+      [
+        ...evidence
+          .text
+          .matchAll(
+            GITHUB_REPOSITORY_URL_PATTERN
+          )
+      ];
 
     for (
       const match
       of matches
     ) {
+      const matchedUrl =
+        match[0];
+
       const parsed =
         normalizeGitHubRepositoryUrl(
-          match
+          matchedUrl
         );
 
       if (!parsed) {
         continue;
       }
+
+      const matchIndex =
+        match.index ?? 0;
+
+      const contextStart =
+        Math.max(
+          0,
+          matchIndex - 120
+        );
+
+      const contextEnd =
+        Math.min(
+          evidence.text.length,
+          matchIndex +
+          matchedUrl.length +
+          120
+        );
+
+      const context =
+        evidence
+          .text
+          .slice(
+            contextStart,
+            contextEnd
+          );
+
+      const classification =
+        classifyBankrGitHubEvidence(
+          {
+            source:
+              evidence.source,
+
+            text:
+              context,
+
+            repositoryUrl:
+              parsed.url
+          }
+        );
 
       const key =
         [
@@ -451,6 +550,24 @@ extractBankrGitHubRepositories(
             );
         }
 
+        if (
+          getClassificationPriority(
+            classification
+          ) >
+          getClassificationPriority(
+            existing
+          )
+        ) {
+          existing.relationship =
+            classification.relationship;
+
+          existing.confidence =
+            classification.confidence;
+
+          existing.reasons =
+            classification.reasons;
+        }
+
         continue;
       }
 
@@ -461,7 +578,16 @@ extractBankrGitHubRepositories(
 
           sources: [
             evidence.source
-          ]
+          ],
+
+          relationship:
+            classification.relationship,
+
+          confidence:
+            classification.confidence,
+
+          reasons:
+            classification.reasons
         }
       );
     }

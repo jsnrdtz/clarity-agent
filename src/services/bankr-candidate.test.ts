@@ -490,3 +490,133 @@ test(
     );
   }
 );
+
+
+test(
+  "stores repository relationship classification in the Bankr candidate",
+  () => {
+    const candidate =
+      createBankrCandidate(
+        createProfile(
+          {
+            description:
+              "Source code: https://github.com/ExampleOrg/MainAgent",
+
+            website:
+              "https://github.com/ExampleOrg/MainAgent"
+          }
+        )
+      );
+
+    assert.equal(
+      candidate.githubRepositories.length,
+      1
+    );
+
+    assert.deepEqual(
+      candidate.githubRepositories[0],
+      {
+        owner:
+          "ExampleOrg",
+
+        repository:
+          "MainAgent",
+
+        url:
+          "https://github.com/ExampleOrg/MainAgent",
+
+        sources: [
+          "website",
+          "description"
+        ],
+
+        relationship:
+          "primary",
+
+        confidence:
+          "high",
+
+        reasons: [
+          "A first-party URL field points directly to the repository.",
+          "Evidence source: website."
+        ]
+      }
+    );
+  }
+);
+
+test(
+  "does not treat an integration repository as the candidate primary repository",
+  () => {
+    const candidate =
+      createBankrCandidate(
+        createProfile(
+          {
+            description:
+              "Compatible with Aeon: https://github.com/aaronjmars/aeon",
+
+            website:
+              "https://vigil.example"
+          }
+        )
+      );
+
+    assert.equal(
+      candidate.githubRepositories.length,
+      1
+    );
+
+    assert.equal(
+      candidate
+        .githubRepositories[0]
+        ?.relationship,
+      "integration"
+    );
+
+    assert.equal(
+      candidate
+        .githubRepositories[0]
+        ?.confidence,
+      "low"
+    );
+  }
+);
+
+test(
+  "prefers stronger direct repository evidence when sources disagree",
+  () => {
+    const candidate =
+      createBankrCandidate(
+        createProfile(
+          {
+            description:
+              "Compatible with another tool: https://github.com/ExampleOrg/Agent",
+
+            website:
+              "https://github.com/ExampleOrg/Agent"
+          }
+        )
+      );
+
+    const repository =
+      candidate.githubRepositories[0];
+
+    assert.equal(
+      repository?.relationship,
+      "primary"
+    );
+
+    assert.equal(
+      repository?.confidence,
+      "high"
+    );
+
+    assert.deepEqual(
+      repository?.sources,
+      [
+        "website",
+        "description"
+      ]
+    );
+  }
+);
