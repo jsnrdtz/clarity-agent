@@ -3,6 +3,10 @@ import {
 } from "./commands/refresh.js";
 
 import {
+  runBankrCandidatesCommand
+} from "./commands/bankr-candidates.js";
+
+import {
   evaluateAgentJson
 } from "./commands/evaluate.js";
 
@@ -479,6 +483,14 @@ listRegisteredAgents();
     console.log(result);
     break;
   }
+
+      case "bankr-candidates": {
+        const asJson = args[0] === "--json";
+        const result = await runBankrCandidatesCommand(asJson);
+        console.log(result.output);
+        if (result.hasFailures) { process.exitCode = 1; }
+        break;
+      }
 
   default: {
     throw new Error(

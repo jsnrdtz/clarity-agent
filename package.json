@@ -9,6 +9,7 @@
     "api": "tsx src/server.ts",
     "test": "node --import tsx --test src/api/*.test.ts src/scoring/*.test.ts src/services/*.test.ts",
     "refresh": "tsx src/index.ts refresh",
+    "bankr:candidates": "tsx src/index.ts bankr-candidates",
     "start": "node dist/server.js",
     "start:cli": "node dist/index.js",
     "refresh:production": "node dist/index.js refresh"
