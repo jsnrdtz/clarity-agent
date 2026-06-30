@@ -340,12 +340,204 @@ const SOURCE_PRIORITY:
       1
   };
 
+const COMPONENT_REPOSITORY_MARKERS =
+  new Set(
+    [
+      "adapter",
+      "agentkit",
+      "api",
+      "audit",
+      "cli",
+      "contract",
+      "contracts",
+      "docs",
+      "documentation",
+      "example",
+      "examples",
+      "integration",
+      "integrations",
+      "mcp",
+      "plugin",
+      "plugins",
+      "sdk",
+      "skill",
+      "skills",
+      "toolkit",
+      "tools"
+    ]
+  );
+
 function normalizeValue(
   value: string
 ): string {
   return value
     .trim()
     .toLowerCase();
+}
+
+function normalizeIdentityValue(
+  value: string
+): string {
+  return normalizeValue(
+    value
+  ).replace(
+    /[^a-z0-9]/gu,
+    ""
+  );
+}
+
+function getProjectIdentityValues(
+  candidate:
+    BankrCandidate
+): string[] {
+  return uniqueStrings(
+    [
+      candidate.bankrSlug,
+      candidate.name
+    ]
+  )
+    .map(
+      normalizeIdentityValue
+    )
+    .filter(
+      (value) =>
+        value.length >= 3
+    );
+}
+
+function getRepositoryIdentityStrength(
+  candidate:
+    BankrCandidate,
+
+  repository: {
+    owner: string;
+    repository: string;
+  }
+): number {
+  const projectIdentities =
+    getProjectIdentityValues(
+      candidate
+    );
+
+  const owner =
+    normalizeIdentityValue(
+      repository.owner
+    );
+
+  const repositoryName =
+    normalizeIdentityValue(
+      repository.repository
+    );
+
+  const exactRepository =
+    projectIdentities.includes(
+      repositoryName
+    );
+
+  const exactOwner =
+    projectIdentities.includes(
+      owner
+    );
+
+  if (
+    exactOwner &&
+    exactRepository
+  ) {
+    return 3;
+  }
+
+  if (exactRepository) {
+    return 2;
+  }
+
+  return 0;
+}
+
+function looksLikeComponentRepository(
+  candidate:
+    BankrCandidate,
+
+  repositoryName: string
+): boolean {
+  const projectIdentities =
+    getProjectIdentityValues(
+      candidate
+    );
+
+  const compactRepository =
+    normalizeIdentityValue(
+      repositoryName
+    );
+
+  if (
+    projectIdentities.includes(
+      compactRepository
+    )
+  ) {
+    return false;
+  }
+
+  const repositoryTokens =
+    repositoryName
+      .replace(
+        /([a-z0-9])([A-Z])/gu,
+        "$1-$2"
+      )
+      .toLowerCase()
+      .split(
+        /[^a-z0-9]+/gu
+      )
+      .filter(Boolean);
+
+  if (
+    repositoryTokens.some(
+      (token) =>
+        COMPONENT_REPOSITORY_MARKERS
+          .has(
+            token
+          )
+    )
+  ) {
+    return true;
+  }
+
+  return projectIdentities.some(
+    (identity) =>
+      [
+        ...COMPONENT_REPOSITORY_MARKERS
+      ].some(
+        (marker) =>
+          compactRepository ===
+            `${identity}${marker}` ||
+          compactRepository.startsWith(
+            `${identity}${marker}`
+          ) ||
+          compactRepository ===
+            `${marker}${identity}`
+      )
+  );
+}
+
+function hasStrongDirectEvidence(
+  repository:
+    BankrCandidate[
+      "githubRepositories"
+    ][number]
+): boolean {
+  const sources =
+    new Set(
+      repository.sources
+    );
+
+  return (
+    sources.has(
+      "website"
+    ) ||
+    sources.has(
+      "website-page"
+    ) ||
+    sources.size >= 2
+  );
 }
 
 function createRepositoryKey(
@@ -465,7 +657,7 @@ function collectDirectCandidates(
     const repository
     of candidate.githubRepositories
   ) {
-    const scope =
+    const detectedScope =
       repository.relationship ===
         "primary"
         ? "primary"
@@ -475,16 +667,43 @@ function collectDirectCandidates(
           : null;
 
     if (
-      !scope ||
+      !detectedScope ||
       repository.confidence ===
         "low"
     ) {
       continue;
     }
 
-    const status =
+    const componentLike =
+      detectedScope ===
+        "primary" &&
+      looksLikeComponentRepository(
+        candidate,
+        repository.repository
+      );
+
+    const scope =
+      componentLike
+        ? "component"
+        : detectedScope;
+
+    const verifiedIdentity =
       repository.confidence ===
-        "high"
+        "high" &&
+      (
+        scope ===
+          "component" ||
+        hasStrongDirectEvidence(
+          repository
+        ) ||
+        getRepositoryIdentityStrength(
+          candidate,
+          repository
+        ) >= 2
+      );
+
+    const status =
+      verifiedIdentity
         ? "verified"
         : "probable";
 
@@ -512,13 +731,21 @@ function collectDirectCandidates(
         score:
           repository.confidence ===
             "high"
-            ? 100
+            ? status ===
+                "verified"
+              ? 100
+              : 85
             : 75,
 
         evidence:
           uniqueStrings(
             [
               `Direct Bankr evidence classified this repository as ${repository.relationship}.`,
+
+              componentLike
+                ? "Repository naming indicates a component, skill, SDK, CLI, plugin, contract, documentation, or integration repository."
+                : null,
+
               ...repository.reasons
             ]
           )
@@ -666,14 +893,24 @@ function collectGlobalCandidates(
       continue;
     }
 
-    const scope =
+    const detectedScope =
       getGlobalScope(
         repository
       );
 
-    if (!scope) {
+    if (!detectedScope) {
       continue;
     }
+
+    const scope =
+      detectedScope ===
+        "primary" &&
+      looksLikeComponentRepository(
+        candidate,
+        repository.repository
+      )
+        ? "component"
+        : detectedScope;
 
     const status =
       repository.status ===
@@ -835,6 +1072,39 @@ function resolveGitHubIdentity(
 
       candidates:
         []
+    };
+  }
+
+  const exactPrimaryCandidates =
+    candidates.filter(
+      (entry) =>
+        entry.scope ===
+          "primary" &&
+        getRepositoryIdentityStrength(
+          candidate,
+          entry
+        ) >= 2
+    );
+
+  const exactPrimary =
+    exactPrimaryCandidates[0];
+
+  if (
+    exactPrimary &&
+    exactPrimaryCandidates.length ===
+      1
+  ) {
+    return {
+      status:
+        exactPrimary.status,
+
+      conflict:
+        false,
+
+      selected:
+        exactPrimary,
+
+      candidates
     };
   }
 

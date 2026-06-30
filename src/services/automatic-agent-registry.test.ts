@@ -559,3 +559,178 @@ test(
     }
   }
 );
+
+test(
+  "demotes component-like direct repositories that were labelled primary",
+  () => {
+    const candidate =
+      createCandidate(
+        {
+          githubRepositories: [
+            {
+              owner:
+                "ExampleOrg",
+
+              repository:
+                "example-agent-skill",
+
+              url:
+                "https://github.com/ExampleOrg/example-agent-skill",
+
+              sources: [
+                "product-url"
+              ],
+
+              relationship:
+                "primary",
+
+              confidence:
+                "high",
+
+              reasons: [
+                "The project links to this repository."
+              ]
+            }
+          ]
+        }
+      );
+
+    const registry =
+      buildAutomaticAgentRegistry(
+        createInput(
+          candidate
+        )
+      );
+
+    const agent =
+      registry.agents[0];
+
+    assert.ok(agent);
+
+    assert.equal(
+      agent.github.selected
+        ?.scope,
+      "component"
+    );
+
+    assert.equal(
+      agent.eligibility.agentScore,
+      false
+    );
+  }
+);
+
+test(
+  "prefers one exact project repository over similarly scored alternatives",
+  () => {
+    const candidate =
+      createCandidate();
+
+    const matches =
+      [
+        {
+          owner:
+            "example-agent",
+
+          repository:
+            "example-agent",
+
+          fullName:
+            "example-agent/example-agent",
+
+          url:
+            "https://github.com/example-agent/example-agent",
+
+          role:
+            "primary-candidate",
+
+          score:
+            65,
+
+          status:
+            "review",
+
+          probable:
+            false,
+
+          matchedBy: [
+            "project-name"
+          ],
+
+          reasons: [
+            "Exact project identity."
+          ]
+        },
+
+        {
+          owner:
+            "another-owner",
+
+          repository:
+            "example-agent-labs",
+
+          fullName:
+            "another-owner/example-agent-labs",
+
+          url:
+            "https://github.com/another-owner/example-agent-labs",
+
+          role:
+            "primary-candidate",
+
+          score:
+            70,
+
+          status:
+            "review",
+
+          probable:
+            false,
+
+          matchedBy: [
+            "project-name"
+          ],
+
+          reasons: [
+            "Similar repository name."
+          ]
+        }
+      ] as BankrGlobalGitHubRepositoryMatch[];
+
+    const registry =
+      buildAutomaticAgentRegistry(
+        createInput(
+          candidate,
+          {
+            globalGitHubDiscovery: {
+              results: [
+                {
+                  bankrProfileId:
+                    candidate.bankrProfileId,
+
+                  candidates:
+                    matches
+                }
+              ]
+            }
+          }
+        )
+      );
+
+    const agent =
+      registry.agents[0];
+
+    assert.ok(agent);
+
+    assert.equal(
+      agent.github.conflict,
+      false
+    );
+
+    assert.equal(
+      agent.github.selected
+        ?.fullName,
+      "example-agent/example-agent"
+    );
+  }
+);
