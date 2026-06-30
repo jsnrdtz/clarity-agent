@@ -204,7 +204,7 @@ jobs:
           NODE
 
       - name: Upload candidate report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bankr-candidates-${{ github.run_id }}
           path: data/candidates/bankr.json
