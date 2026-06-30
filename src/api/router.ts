@@ -21,6 +21,13 @@ import {
 } from "../services/admin-refresh.js";
 
 import {
+  authenticateCandidateUpload,
+  loadPublishedCandidateReport,
+  readCandidateReportRequest,
+  savePublishedCandidateReport
+} from "../services/bankr-candidate-storage.js";
+
+import {
   applyRequestRateLimit,
   DEFAULT_API_RATE_LIMIT_POLICIES,
   type ApiRateLimitPolicies
@@ -179,6 +186,7 @@ function isKnownGetPath(
     pathname === "/openapi.json" ||
     pathname === "/health" ||
     pathname === "/api/v1/agents" ||
+    pathname === "/api/v1/candidates/bankr" ||
     pathname === "/api/v1/search" ||
     pathname === "/api/v1/ranking" ||
     /^\/api\/v1\/compare\/[^/]+\/[^/]+$/.test(
@@ -236,7 +244,9 @@ function sendError(
 
   if (
     normalized.code ===
-    "REFRESH_AUTHENTICATION_FAILED"
+      "REFRESH_AUTHENTICATION_FAILED" ||
+    normalized.code ===
+      "CANDIDATE_UPLOAD_AUTHENTICATION_FAILED"
   ) {
     response.setHeader(
       "WWW-Authenticate",
@@ -378,6 +388,22 @@ async function routeGetRequest(
     return;
   }
 
+  if (
+    pathname ===
+    "/api/v1/candidates/bankr"
+  ) {
+    const report =
+      await loadPublishedCandidateReport();
+
+    sendJson(
+      response,
+      200,
+      report
+    );
+
+    return;
+  }
+
   if (pathname === "/api/v1/search") {
     const query =
       searchParams.get("q") ??
@@ -485,6 +511,47 @@ async function routePostRequest(
 ): Promise<void> {
   if (
     pathname ===
+    "/api/v1/admin/candidates/bankr"
+  ) {
+    authenticateCandidateUpload(
+      request.headers.authorization
+    );
+
+    const report =
+      await readCandidateReportRequest(
+        request
+      );
+
+    const outputPath =
+      await savePublishedCandidateReport(
+        report
+      );
+
+    sendJson(
+      response,
+      200,
+      {
+        schemaVersion:
+          "1.0",
+
+        stored:
+          true,
+
+        generatedAt:
+          report.generatedAt,
+
+        candidates:
+          report.candidates.length,
+
+        outputPath
+      }
+    );
+
+    return;
+  }
+
+  if (
+    pathname ===
     "/api/v1/admin/refresh"
   ) {
     authenticateAdminRefresh(
@@ -542,7 +609,9 @@ export async function handleApiRequest(
     if (request.method === "GET") {
       if (
         requestUrl.pathname ===
-        "/api/v1/admin/refresh"
+          "/api/v1/admin/refresh" ||
+        requestUrl.pathname ===
+          "/api/v1/admin/candidates/bankr"
       ) {
         sendMethodNotAllowed(
           response,

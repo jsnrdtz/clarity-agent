@@ -29,6 +29,7 @@ COPY public ./public
 
 RUN mkdir -p \
   /app/data/snapshots \
+  /app/data/candidates \
   && chown -R node:node /app
 
 USER node

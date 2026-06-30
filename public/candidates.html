@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+  <meta
+    name="description"
+    content="Clarity Candidate Review — inspect GitHub evidence discovered from Bankr profiles and official websites."
+  >
+  <title>Candidate Review — Clarity</title>
+  <link
+    rel="stylesheet"
+    href="/styles.css"
+  >
+  <script
+    src="/candidates.js"
+    defer
+  ></script>
+</head>
+
+<body class="cr-page">
+  <header class="cr-topbar">
+    <a
+      class="cr-brand"
+      href="/"
+    >
+      CLARITY
+    </a>
+
+    <span>
+      CANDIDATE REVIEW
+    </span>
+
+    <a
+      class="cr-back"
+      href="/"
+    >
+      ← RANKING
+    </a>
+  </header>
+
+  <main class="cr-shell">
+    <section class="cr-hero">
+      <div>
+        <p class="cr-kicker">
+          BANKR DISCOVERY PIPELINE
+        </p>
+
+        <h1>
+          Candidate Review
+        </h1>
+
+        <p class="cr-intro">
+          GitHub evidence discovered from Bankr profiles,
+          official websites and public GitHub owners.
+          Nothing on this page is automatically promoted
+          into the trusted Clarity registry.
+        </p>
+      </div>
+
+      <div
+        id="cr-status"
+        class="cr-status"
+      >
+        LOADING REPORT…
+      </div>
+    </section>
+
+    <section
+      id="cr-summary"
+      class="cr-summary"
+      aria-label="Candidate report summary"
+    ></section>
+
+    <section class="cr-controls">
+      <label>
+        <span>SEARCH</span>
+
+        <input
+          id="cr-search"
+          type="search"
+          placeholder="Agent, owner or repository"
+          autocomplete="off"
+        >
+      </label>
+
+      <label>
+        <span>FILTER</span>
+
+        <select id="cr-filter">
+          <option value="all">
+            ALL EVIDENCE
+          </option>
+
+          <option value="direct">
+            DIRECT REPOSITORIES
+          </option>
+
+          <option value="probable">
+            PROBABLE OWNER MATCHES
+          </option>
+
+          <option value="review">
+            OWNER REVIEW
+          </option>
+        </select>
+      </label>
+    </section>
+
+    <section
+      id="cr-results"
+      class="cr-results"
+      aria-live="polite"
+    ></section>
+  </main>
+</body>
+</html>

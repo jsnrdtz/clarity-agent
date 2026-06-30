@@ -29,6 +29,8 @@ test(
         "/api/v1/agents",
         "/api/v1/search",
         "/api/v1/evaluate/{agent}",
+        "/api/v1/candidates/bankr",
+        "/api/v1/admin/candidates/bankr",
         "/api/v1/admin/refresh",
         "/api/v1/ranking",
         "/api/v1/compare/{left}/{right}"
@@ -178,5 +180,33 @@ test(
         exceededHeaders
       );
     }
+  }
+);
+
+
+test(
+  "protects the candidate report upload endpoint",
+  () => {
+    const endpoint =
+      openApiDocument.paths[
+        "/api/v1/admin/candidates/bankr"
+      ];
+
+    assert.deepEqual(
+      endpoint.post.security,
+      [
+        {
+          candidateUploadBearer:
+            []
+        }
+      ]
+    );
+
+    assert.ok(
+      openApiDocument
+        .components
+        .securitySchemes
+        .candidateUploadBearer
+    );
   }
 );

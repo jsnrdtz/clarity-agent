@@ -1363,3 +1363,478 @@ test(
     );
   }
 );
+
+function createCandidateReportFixture() {
+  return {
+    schemaVersion:
+      "1.0",
+
+    source:
+      "bankr",
+
+    generatedAt:
+      "2026-06-30T00:00:00.000Z",
+
+    profilesListed:
+      1,
+
+    detailsLoaded:
+      1,
+
+    failures:
+      [],
+
+    candidates: [
+      {
+        source:
+          "bankr",
+
+        bankrProfileId:
+          "profile-1",
+
+        bankrSlug:
+          "example-agent",
+
+        name:
+          "Example Agent",
+
+        description:
+          "Example candidate.",
+
+        website:
+          "https://example.com",
+
+        githubRepositories:
+          [],
+
+        warnings: [
+          "no-github-repository"
+        ]
+      }
+    ],
+
+    warnings:
+      [],
+
+    conflicts: {
+      profileIds:
+        [],
+
+      slugs:
+        [],
+
+      tokenIdentities:
+        []
+    },
+
+    websiteDiscovery: {
+      skippedExistingGitHub:
+        0,
+
+      skippedNoWebsite:
+        0,
+
+      skippedSocialWebsite:
+        0,
+
+      attempted:
+        1,
+
+      found:
+        0,
+
+      ownerOnly:
+        0,
+
+      notFound:
+        1,
+
+      failed:
+        0,
+
+      repositoriesFound:
+        0,
+
+      ownerPagesFound:
+        0,
+
+      results:
+        []
+    },
+
+    ownerDiscovery: {
+      enabled:
+        true,
+
+      skippedNoToken:
+        0,
+
+      attempted:
+        0,
+
+      probable:
+        0,
+
+      review:
+        0,
+
+      notFound:
+        0,
+
+      failed:
+        0,
+
+      candidatesFound:
+        0,
+
+      results:
+        []
+    },
+
+    githubEvidence: {
+      candidatesWithGitHub:
+        0,
+
+      candidatesWithoutGitHub:
+        1,
+
+      classifiedRepositories:
+        0,
+
+      uniqueRepositories:
+        0,
+
+      relationships: {
+        primary:
+          0,
+
+        component:
+          0,
+
+        integration:
+          0,
+
+        dependency:
+          0,
+
+        example:
+          0,
+
+        unknown:
+          0
+      },
+
+      confidences: {
+        high:
+          0,
+
+        medium:
+          0,
+
+        low:
+          0
+      }
+    }
+  };
+}
+
+function setCandidateUploadEnvironment(
+  token:
+    string |
+    undefined,
+
+  reportPath:
+    string
+): () => void {
+  const previousToken =
+    process.env
+      .CLARITY_CANDIDATE_UPLOAD_TOKEN;
+
+  const previousPath =
+    process.env
+      .CLARITY_BANKR_PUBLISHED_REPORT_PATH;
+
+  if (
+    token === undefined
+  ) {
+    delete process.env
+      .CLARITY_CANDIDATE_UPLOAD_TOKEN;
+  } else {
+    process.env
+      .CLARITY_CANDIDATE_UPLOAD_TOKEN =
+        token;
+  }
+
+  process.env
+    .CLARITY_BANKR_PUBLISHED_REPORT_PATH =
+      reportPath;
+
+  return () => {
+    if (
+      previousToken === undefined
+    ) {
+      delete process.env
+        .CLARITY_CANDIDATE_UPLOAD_TOKEN;
+    } else {
+      process.env
+        .CLARITY_CANDIDATE_UPLOAD_TOKEN =
+          previousToken;
+    }
+
+    if (
+      previousPath === undefined
+    ) {
+      delete process.env
+        .CLARITY_BANKR_PUBLISHED_REPORT_PATH;
+    } else {
+      process.env
+        .CLARITY_BANKR_PUBLISHED_REPORT_PATH =
+          previousPath;
+    }
+  };
+}
+
+test(
+  "serves the public Candidate Review page",
+  async () => {
+    const response =
+      await fetch(
+        `${baseUrl}/candidates`
+      );
+
+    assert.equal(
+      response.status,
+      200
+    );
+
+    assert.match(
+      await response.text(),
+      /Candidate Review/
+    );
+  }
+);
+
+test(
+  "publishes and returns a validated Bankr candidate report",
+  async () => {
+    const token =
+      "abcdef0123456789abcdef0123456789";
+
+    const reportPath =
+      `/tmp/clarity-bankr-${process.pid}-${Date.now()}.json`;
+
+    const restore =
+      setCandidateUploadEnvironment(
+        token,
+        reportPath
+      );
+
+    try {
+      const upload =
+        await getJson(
+          "/api/v1/admin/candidates/bankr",
+          {
+            method:
+              "POST",
+
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+
+              "Content-Type":
+                "application/json"
+            },
+
+            body:
+              JSON.stringify(
+                createCandidateReportFixture()
+              )
+          }
+        );
+
+      assert.equal(
+        upload.response.status,
+        200
+      );
+
+      assert.equal(
+        upload.body.stored,
+        true
+      );
+
+      const published =
+        await getJson(
+          "/api/v1/candidates/bankr"
+        );
+
+      assert.equal(
+        published.response.status,
+        200
+      );
+
+      assert.equal(
+        published.body.source,
+        "bankr"
+      );
+
+      assert.equal(
+        (
+          published.body
+            .candidates as
+              unknown[]
+        ).length,
+        1
+      );
+    } finally {
+      restore();
+
+      const {
+        unlink
+      } =
+        await import(
+          "node:fs/promises"
+        );
+
+      await unlink(
+        reportPath
+      ).catch(
+        () => undefined
+      );
+    }
+  }
+);
+
+test(
+  "requires candidate upload Bearer authentication",
+  async () => {
+    const reportPath =
+      `/tmp/clarity-bankr-auth-${process.pid}-${Date.now()}.json`;
+
+    const restore =
+      setCandidateUploadEnvironment(
+        "abcdef0123456789abcdef0123456789",
+        reportPath
+      );
+
+    try {
+      const {
+        response,
+        body
+      } =
+        await getJson(
+          "/api/v1/admin/candidates/bankr",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json"
+            },
+
+            body:
+              JSON.stringify(
+                createCandidateReportFixture()
+              )
+          }
+        );
+
+      assert.equal(
+        response.status,
+        401
+      );
+
+      assert.equal(
+        response.headers.get(
+          "www-authenticate"
+        ),
+        "Bearer"
+      );
+
+      assert.equal(
+        (
+          body.error as {
+            code: string;
+          }
+        ).code,
+        "CANDIDATE_UPLOAD_AUTHENTICATION_FAILED"
+      );
+    } finally {
+      restore();
+    }
+  }
+);
+
+test(
+  "returns 404 before a candidate report is published",
+  async () => {
+    const reportPath =
+      `/tmp/clarity-bankr-missing-${process.pid}-${Date.now()}.json`;
+
+    const restore =
+      setCandidateUploadEnvironment(
+        undefined,
+        reportPath
+      );
+
+    try {
+      const {
+        response,
+        body
+      } =
+        await getJson(
+          "/api/v1/candidates/bankr"
+        );
+
+      assert.equal(
+        response.status,
+        404
+      );
+
+      assert.equal(
+        (
+          body.error as {
+            code: string;
+          }
+        ).code,
+        "CANDIDATE_REPORT_NOT_FOUND"
+      );
+    } finally {
+      restore();
+    }
+  }
+);
+
+test(
+  "rejects GET requests to the candidate upload endpoint",
+  async () => {
+    const {
+      response,
+      body
+    } =
+      await getJson(
+        "/api/v1/admin/candidates/bankr"
+      );
+
+    assert.equal(
+      response.status,
+      405
+    );
+
+    assert.equal(
+      response.headers.get(
+        "allow"
+      ),
+      "POST, OPTIONS"
+    );
+
+    assert.equal(
+      (
+        body.error as {
+          code: string;
+        }
+      ).code,
+      "METHOD_NOT_ALLOWED"
+    );
+  }
+);

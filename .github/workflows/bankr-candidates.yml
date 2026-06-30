@@ -21,6 +21,7 @@ jobs:
 
     env:
       GITHUB_TOKEN: ${{ github.token }}
+      CLARITY_API_URL: https://clarity-agent-production.up.railway.app
 
     steps:
       - name: Checkout repository
@@ -202,6 +203,32 @@ jobs:
             )
           );
           NODE
+
+      - name: Publish candidate report
+        shell: bash
+        env:
+          CLARITY_CANDIDATE_UPLOAD_TOKEN: ${{ secrets.CLARITY_CANDIDATE_UPLOAD_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CLARITY_CANDIDATE_UPLOAD_TOKEN:-}" ]; then
+            echo "CLARITY_CANDIDATE_UPLOAD_TOKEN is not configured."
+            exit 1
+          fi
+
+          RESPONSE_FILE="/tmp/clarity-candidate-upload.json"
+
+          STATUS="$(
+            curl               --silent               --show-error               --max-time 120               --output "${RESPONSE_FILE}"               --write-out '%{http_code}'               --request POST               --header "Content-Type: application/json"               --header "Authorization: Bearer ${CLARITY_CANDIDATE_UPLOAD_TOKEN}"               --data-binary @data/candidates/bankr.json               "${CLARITY_API_URL}/api/v1/admin/candidates/bankr"
+          )"
+
+          cat "${RESPONSE_FILE}"
+          echo
+
+          if [ "${STATUS}" != "200" ]; then
+            echo "Candidate upload returned HTTP ${STATUS}."
+            exit 1
+          fi
 
       - name: Upload candidate report
         uses: actions/upload-artifact@v7

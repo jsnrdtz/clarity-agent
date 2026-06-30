@@ -63,6 +63,9 @@ export const openApiDocument = {
       name: "Agents"
     },
     {
+      name: "Candidate Review"
+    },
+    {
       name: "Evaluation"
     },
     {
@@ -302,6 +305,155 @@ export const openApiDocument = {
           "503": {
             description:
               "GitHub data is temporarily unavailable.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "/api/v1/candidates/bankr": {
+      get: {
+        tags: [
+          "Candidate Review"
+        ],
+
+        summary:
+          "Get the latest published Bankr candidate report",
+
+        operationId:
+          "getBankrCandidateReport",
+
+        responses: {
+          "200": {
+            description:
+              "Latest validated Bankr candidate report.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/BankrCandidateReport"
+                }
+              }
+            }
+          },
+
+          "404": {
+            description:
+              "No candidate report has been published.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "/api/v1/admin/candidates/bankr": {
+      post: {
+        tags: [
+          "Administration"
+        ],
+
+        summary:
+          "Publish a validated Bankr candidate report",
+
+        operationId:
+          "publishBankrCandidateReport",
+
+        security: [
+          {
+            candidateUploadBearer: []
+          }
+        ],
+
+        requestBody: {
+          required: true,
+
+          content: {
+            "application/json": {
+              schema: {
+                $ref:
+                  "#/components/schemas/BankrCandidateReport"
+              }
+            }
+          }
+        },
+
+        responses: {
+          "200": {
+            description:
+              "Candidate report was validated and stored.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/CandidateUploadResponse"
+                }
+              }
+            }
+          },
+
+          "400": {
+            description:
+              "Candidate report failed validation.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+
+          "401": {
+            description:
+              "Bearer authentication failed.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+
+          "413": {
+            description:
+              "Candidate report exceeds the upload limit.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+
+          "503": {
+            description:
+              "Candidate upload is not configured.",
 
             content: {
               "application/json": {
@@ -566,10 +718,76 @@ export const openApiDocument = {
 
         description:
           "Administrative refresh token."
+      },
+
+      candidateUploadBearer: {
+        type: "http",
+        scheme: "bearer",
+
+        description:
+          "Administrative candidate report upload token."
       }
     },
 
     schemas: {
+      BankrCandidateReport: {
+        type: "object",
+
+        required: [
+          "schemaVersion",
+          "source",
+          "generatedAt",
+          "profilesListed",
+          "detailsLoaded",
+          "failures",
+          "candidates",
+          "websiteDiscovery",
+          "ownerDiscovery",
+          "githubEvidence"
+        ],
+
+        additionalProperties:
+          true
+      },
+
+      CandidateUploadResponse: {
+        type: "object",
+
+        required: [
+          "schemaVersion",
+          "stored",
+          "generatedAt",
+          "candidates",
+          "outputPath"
+        ],
+
+        properties: {
+          schemaVersion: {
+            type: "string",
+            const: "1.0"
+          },
+
+          stored: {
+            type: "boolean",
+            const: true
+          },
+
+          generatedAt: {
+            type: "string",
+            format: "date-time"
+          },
+
+          candidates: {
+            type: "integer",
+            minimum: 0
+          },
+
+          outputPath: {
+            type: "string"
+          }
+        }
+      },
+
       AgentRefreshReport: {
         type: "object",
 
