@@ -100,6 +100,30 @@ export const agentRegistry: RegisteredAgent[] = [
       repository: "agent-intelligence-arena",
       scope: "primary"
     }
+  },
+  {
+    slug: "orlix-ai",
+    name: "Orlix AI",
+    aliases: [
+      "orlix",
+      "orlixai",
+      "tylerbroqs/orlixai"
+    ],
+
+    searchAliases: [
+      "orlix ai",
+      "orlix agent",
+      "personal ai operating system"
+    ],
+
+    description:
+      "Personal AI operating system combining multi-model assistance, Base token analysis, and Telegram access.",
+
+    github: {
+      owner: "tylerbroqs",
+      repository: "orlixai",
+      scope: "primary"
+    }
   }
 ];
 

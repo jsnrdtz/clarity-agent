@@ -95,3 +95,45 @@ test(
     );
   }
 );
+
+
+test(
+  "registers Orlix with its primary product repository",
+  () => {
+    const agent =
+      findRegisteredAgent(
+        "orlix-ai"
+      );
+
+    assert.ok(agent);
+
+    assert.equal(
+      agent.github.owner,
+      "tylerbroqs"
+    );
+
+    assert.equal(
+      agent.github.repository,
+      "orlixai"
+    );
+
+    assert.equal(
+      agent.github.scope,
+      "primary"
+    );
+
+    assert.equal(
+      findRegisteredAgent(
+        "orlix"
+      )?.slug,
+      "orlix-ai"
+    );
+
+    assert.equal(
+      findRegisteredAgent(
+        "tylerbroqs/orlixai"
+      )?.slug,
+      "orlix-ai"
+    );
+  }
+);

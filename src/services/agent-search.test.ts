@@ -178,3 +178,53 @@ test(
     );
   }
 );
+
+
+test(
+  "finds Orlix by its normalized compact slug",
+  () => {
+    const result =
+      searchRegisteredAgents(
+        "orlixai"
+      );
+
+    assert.equal(
+      result.count,
+      1
+    );
+
+    assert.equal(
+      result.results[0]
+        ?.agent.slug,
+      "orlix-ai"
+    );
+
+    assert.equal(
+      result.results[0]
+        ?.match.type,
+      "exact-slug"
+    );
+  }
+);
+
+test(
+  "finds Orlix by its product category",
+  () => {
+    const result =
+      searchRegisteredAgents(
+        "personal ai operating system"
+      );
+
+    assert.equal(
+      result.results[0]
+        ?.agent.slug,
+      "orlix-ai"
+    );
+
+    assert.equal(
+      result.results[0]
+        ?.match.type,
+      "exact-alias"
+    );
+  }
+);
