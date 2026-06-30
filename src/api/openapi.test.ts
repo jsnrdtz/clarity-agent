@@ -33,6 +33,7 @@ test(
         "/api/v1/candidates/bankr/reviews",
         "/api/v1/admin/candidates/bankr",
         "/api/v1/admin/candidates/bankr/reviews",
+        "/api/v1/admin/candidates/bankr/reviews/batch",
         "/api/v1/admin/refresh",
         "/api/v1/ranking",
         "/api/v1/compare/{left}/{right}"

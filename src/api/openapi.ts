@@ -407,6 +407,124 @@ export const openApiDocument = {
       }
     },
 
+    "/api/v1/admin/candidates/bankr/reviews/batch": {
+      post: {
+        tags: [
+          "Administration"
+        ],
+
+        summary:
+          "Apply multiple candidate review decisions atomically",
+
+        operationId:
+          "updateCandidateReviewsBatch",
+
+        security: [
+          {
+            candidateReviewBearer:
+              []
+          }
+        ],
+
+        requestBody: {
+          required:
+            true,
+
+          content: {
+            "application/json": {
+              schema: {
+                type:
+                  "object",
+
+                required: [
+                  "reviews"
+                ],
+
+                additionalProperties:
+                  false,
+
+                properties: {
+                  reviews: {
+                    type:
+                      "array",
+
+                    minItems:
+                      1,
+
+                    maxItems:
+                      100,
+
+                    items: {
+                      $ref:
+                        "#/components/schemas/CandidateReviewRequest"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+
+        responses: {
+          "200": {
+            description:
+              "All review decisions were validated and saved atomically.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/CandidateReviewView"
+                }
+              }
+            }
+          },
+
+          "400": {
+            description:
+              "The batch request is invalid or contains duplicate targets.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+
+          "401": {
+            description:
+              "Review Bearer authentication failed.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+
+          "404": {
+            description:
+              "At least one repository is not present in the current report.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
     "/api/v1/admin/candidates/bankr/reviews": {
       get: {
         tags: [
@@ -937,6 +1055,7 @@ export const openApiDocument = {
           "candidates",
           "websiteDiscovery",
           "ownerDiscovery",
+          "globalGitHubDiscovery",
           "githubEvidence"
         ],
 

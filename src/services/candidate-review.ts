@@ -62,6 +62,11 @@ export type CandidateReviewInput = {
     null;
 };
 
+export type CandidateReviewBatchInput = {
+  reviews:
+    CandidateReviewInput[];
+};
+
 export type CandidateReviewDecision = {
   key: string;
 
@@ -99,7 +104,8 @@ export type CandidateReviewItem = {
 
   source:
     | "direct"
-    | "owner-discovery";
+    | "owner-discovery"
+    | "global-github-search";
 
   bankrProfileId: string;
   bankrSlug: string;
@@ -133,6 +139,12 @@ export type CandidateReviewItem = {
     probable:
       boolean |
       null;
+
+    matchedBy:
+      string[];
+
+    queries:
+      string[];
 
     reasons:
       string[];
@@ -225,6 +237,24 @@ const reviewInputSchema =
           .max(500)
           .nullable()
           .optional()
+    }
+  )
+    .strict();
+
+const MAXIMUM_REVIEW_BATCH_SIZE =
+  100;
+
+const reviewBatchInputSchema =
+  z.object(
+    {
+      reviews:
+        z.array(
+          reviewInputSchema
+        )
+          .min(1)
+          .max(
+            MAXIMUM_REVIEW_BATCH_SIZE
+          )
     }
   )
     .strict();
@@ -512,12 +542,10 @@ export function authenticateCandidateReview(
   }
 }
 
-export async function readCandidateReviewRequest(
+async function readCandidateReviewJson(
   request:
     IncomingMessage
-): Promise<
-  CandidateReviewInput
-> {
+): Promise<unknown> {
   const chunks:
     Buffer[] =
     [];
@@ -549,9 +577,7 @@ export async function readCandidateReviewRequest(
 
       throw new ClarityError(
         "CANDIDATE_REVIEW_INVALID",
-
         "Candidate review request body is too large.",
-
         413
       );
     }
@@ -571,20 +597,16 @@ export async function readCandidateReviewRequest(
     );
   }
 
-  let parsed:
-    unknown;
-
   try {
-    parsed =
-      JSON.parse(
-        Buffer
-          .concat(
-            chunks
-          )
-          .toString(
-            "utf8"
-          )
-      );
+    return JSON.parse(
+      Buffer
+        .concat(
+          chunks
+        )
+        .toString(
+          "utf8"
+        )
+    );
   } catch (error) {
     throw new ClarityError(
       "CANDIDATE_REVIEW_INVALID",
@@ -596,6 +618,76 @@ export async function readCandidateReviewRequest(
       }
     );
   }
+}
+
+function createReviewValidationError(
+  issues:
+    Array<{
+      path:
+        PropertyKey[];
+
+      message:
+        string;
+    }>
+): ClarityError {
+  return new ClarityError(
+    "CANDIDATE_REVIEW_INVALID",
+    "Candidate review request failed runtime validation.",
+    400,
+    {
+      details: {
+        issues:
+          issues
+            .slice(
+              0,
+              10
+            )
+            .map(
+              (issue) => ({
+                path:
+                  issue.path
+                    .map(
+                      String
+                    )
+                    .join(
+                      "."
+                    ),
+
+                message:
+                  issue.message
+              })
+            )
+      }
+    }
+  );
+}
+
+function normalizeReviewInput(
+  input:
+    z.infer<
+      typeof reviewInputSchema
+    >
+): CandidateReviewInput {
+  return {
+    ...input,
+
+    note:
+      input.note
+        ?.trim() ||
+      null
+  };
+}
+
+export async function readCandidateReviewRequest(
+  request:
+    IncomingMessage
+): Promise<
+  CandidateReviewInput
+> {
+  const parsed =
+    await readCandidateReviewJson(
+      request
+    );
 
   const validated =
     reviewInputSchema.safeParse(
@@ -605,44 +697,48 @@ export async function readCandidateReviewRequest(
   if (
     !validated.success
   ) {
-    throw new ClarityError(
-      "CANDIDATE_REVIEW_INVALID",
+    throw createReviewValidationError(
+      validated.error.issues
+    );
+  }
 
-      "Candidate review request failed runtime validation.",
+  return normalizeReviewInput(
+    validated.data
+  );
+}
 
-      400,
+export async function readCandidateReviewBatchRequest(
+  request:
+    IncomingMessage
+): Promise<
+  CandidateReviewBatchInput
+> {
+  const parsed =
+    await readCandidateReviewJson(
+      request
+    );
 
-      {
-        details: {
-          issues:
-            validated.error.issues
-              .slice(
-                0,
-                10
-              )
-              .map(
-                (issue) => ({
-                  path:
-                    issue.path.join(
-                      "."
-                    ),
+  const validated =
+    reviewBatchInputSchema.safeParse(
+      parsed
+    );
 
-                  message:
-                    issue.message
-                })
-              )
-        }
-      }
+  if (
+    !validated.success
+  ) {
+    throw createReviewValidationError(
+      validated.error.issues
     );
   }
 
   return {
-    ...validated.data,
-
-    note:
-      validated.data.note
-        ?.trim() ||
-      null
+    reviews:
+      validated
+        .data
+        .reviews
+        .map(
+          normalizeReviewInput
+        )
   };
 }
 
@@ -878,6 +974,12 @@ function collectReviewableRepositories(
             probable:
               null,
 
+            matchedBy:
+              [],
+
+            queries:
+              [],
+
             reasons:
               repository.reasons
           }
@@ -978,6 +1080,125 @@ function collectReviewableRepositories(
 
             probable:
               repository.probable,
+
+            matchedBy:
+              [],
+
+            queries:
+              [],
+
+            reasons:
+              repository.reasons
+          }
+        }
+      );
+    }
+  }
+
+  for (
+    const result
+    of report
+      .globalGitHubDiscovery
+      ?.results ??
+      []
+  ) {
+    const candidate =
+      candidatesByProfileId.get(
+        result.bankrProfileId
+      );
+
+    if (!candidate) {
+      continue;
+    }
+
+    const queries =
+      result.queries.map(
+        (query) =>
+          `${query.source}: ${query.query}`
+      );
+
+    for (
+      const repository
+      of result.candidates
+    ) {
+      const normalized =
+        normalizeGitHubRepositoryUrl(
+          repository.url
+        );
+
+      if (!normalized) {
+        continue;
+      }
+
+      const key =
+        createDecisionKey(
+          candidate.bankrProfileId,
+          normalized.url
+        );
+
+      if (
+        items.has(
+          key
+        )
+      ) {
+        continue;
+      }
+
+      items.set(
+        key,
+        {
+          key,
+
+          source:
+            "global-github-search",
+
+          bankrProfileId:
+            candidate.bankrProfileId,
+
+          bankrSlug:
+            candidate.bankrSlug,
+
+          candidateName:
+            candidate.name,
+
+          candidateDescription:
+            candidate.description,
+
+          repositoryUrl:
+            normalized.url,
+
+          githubOwner:
+            normalized.owner,
+
+          githubRepository:
+            normalized.repository,
+
+          suggestedScope:
+            repository.role ===
+              "primary-candidate"
+              ? "primary"
+              : "component",
+
+          evidence: {
+            relationship:
+              null,
+
+            confidence:
+              null,
+
+            role:
+              repository.role,
+
+            score:
+              repository.score,
+
+            probable:
+              repository.probable,
+
+            matchedBy:
+              repository.matchedBy,
+
+            queries,
 
             reasons:
               repository.reasons
@@ -1443,22 +1664,234 @@ let mutationQueue:
 Promise<void> =
   Promise.resolve();
 
-export async function updateCandidateReview(
+type ResolvedCandidateReviewMutation = {
+  input:
+    CandidateReviewInput;
+
+  key:
+    string;
+
+  item:
+    CandidateReviewItem;
+};
+
+function resolveCandidateReviewMutations(
+  view:
+    CandidateReviewView,
+
+  inputs:
+    CandidateReviewInput[]
+): ResolvedCandidateReviewMutation[] {
+  if (
+    inputs.length < 1 ||
+    inputs.length >
+      MAXIMUM_REVIEW_BATCH_SIZE
+  ) {
+    throw new ClarityError(
+      "CANDIDATE_REVIEW_INVALID",
+      `Candidate review batch must contain between 1 and ${MAXIMUM_REVIEW_BATCH_SIZE} decisions.`,
+      400
+    );
+  }
+
+  const itemByKey =
+    new Map(
+      view.items.map(
+        (item) => [
+          item.key,
+          item
+        ]
+      )
+    );
+
+  const seenKeys =
+    new Set<string>();
+
+  return inputs.map(
+    (input) => {
+      const normalized =
+        normalizeGitHubRepositoryUrl(
+          input.repositoryUrl
+        );
+
+      if (!normalized) {
+        throw new ClarityError(
+          "CANDIDATE_REVIEW_INVALID",
+          "Candidate review repository must be a GitHub repository URL.",
+          400
+        );
+      }
+
+      const key =
+        createDecisionKey(
+          input.bankrProfileId,
+          normalized.url
+        );
+
+      if (
+        seenKeys.has(
+          key
+        )
+      ) {
+        throw new ClarityError(
+          "CANDIDATE_REVIEW_INVALID",
+          "Candidate review batch contains the same repository target more than once.",
+          400
+        );
+      }
+
+      seenKeys.add(
+        key
+      );
+
+      const item =
+        itemByKey.get(
+          key
+        );
+
+      if (!item) {
+        throw new ClarityError(
+          "CANDIDATE_REVIEW_TARGET_NOT_FOUND",
+          "Candidate repository is not present in the current published report.",
+          404
+        );
+      }
+
+      return {
+        input:
+          normalizeReviewInput(
+            input
+          ),
+
+        key,
+
+        item
+      };
+    }
+  );
+}
+
+function buildNextCandidateReviewState(
+  state:
+    CandidateReviewState,
+
+  mutations:
+    ResolvedCandidateReviewMutation[]
+): CandidateReviewState {
+  const now =
+    new Date()
+      .toISOString();
+
+  const decisionsByKey =
+    new Map(
+      state.decisions.map(
+        (decision) => [
+          decision.key,
+          decision
+        ]
+      )
+    );
+
+  for (
+    const mutation
+    of mutations
+  ) {
+    if (
+      mutation.input.decision ===
+        "reset"
+    ) {
+      decisionsByKey.delete(
+        mutation.key
+      );
+
+      continue;
+    }
+
+    decisionsByKey.set(
+      mutation.key,
+      {
+        key:
+          mutation.key,
+
+        bankrProfileId:
+          mutation.item
+            .bankrProfileId,
+
+        bankrSlug:
+          mutation.item
+            .bankrSlug,
+
+        candidateName:
+          mutation.item
+            .candidateName,
+
+        repositoryUrl:
+          mutation.item
+            .repositoryUrl,
+
+        githubOwner:
+          mutation.item
+            .githubOwner,
+
+        githubRepository:
+          mutation.item
+            .githubRepository,
+
+        status:
+          mutation.input.decision ===
+            "approve"
+            ? "approved"
+            : "rejected",
+
+        note:
+          mutation.input.note ??
+          null,
+
+        decidedAt:
+          now
+      }
+    );
+  }
+
+  return {
+    schemaVersion:
+      "1.0",
+
+    updatedAt:
+      now,
+
+    decisions:
+      [
+        ...decisionsByKey
+          .values()
+      ].sort(
+        (
+          left,
+          right
+        ) =>
+          left.key.localeCompare(
+            right.key
+          )
+      )
+  };
+}
+
+export async function updateCandidateReviewsBatch(
   report:
     BankrCandidateImportReport,
 
-  input:
-    CandidateReviewInput
+  inputs:
+    CandidateReviewInput[]
 ): Promise<
   CandidateReviewView
 > {
-  let resolveResult:
+  let resolveResult!:
     (
       value:
         CandidateReviewView
     ) => void;
 
-  let rejectResult:
+  let rejectResult!:
     (
       reason:
         unknown
@@ -1497,114 +1930,17 @@ export async function updateCandidateReview(
                 state
               );
 
-            const normalized =
-              normalizeGitHubRepositoryUrl(
-                input.repositoryUrl
+            const mutations =
+              resolveCandidateReviewMutations(
+                view,
+                inputs
               );
 
-            if (!normalized) {
-              throw new ClarityError(
-                "CANDIDATE_REVIEW_INVALID",
-                "Candidate review repository must be a GitHub repository URL.",
-                400
+            const nextState =
+              buildNextCandidateReviewState(
+                state,
+                mutations
               );
-            }
-
-            const key =
-              createDecisionKey(
-                input.bankrProfileId,
-                normalized.url
-              );
-
-            const item =
-              view.items.find(
-                (candidate) =>
-                  candidate.key ===
-                    key
-              );
-
-            if (!item) {
-              throw new ClarityError(
-                "CANDIDATE_REVIEW_TARGET_NOT_FOUND",
-
-                "Candidate repository is not present in the current published report.",
-
-                404
-              );
-            }
-
-            const remaining =
-              state.decisions.filter(
-                (decision) =>
-                  decision.key !==
-                    key
-              );
-
-            const now =
-              new Date()
-                .toISOString();
-
-            const nextState:
-              CandidateReviewState = {
-                schemaVersion:
-                  "1.0",
-
-                updatedAt:
-                  now,
-
-                decisions:
-                  input.decision ===
-                    "reset"
-                    ? remaining
-                    : [
-                        ...remaining,
-
-                        {
-                          key,
-
-                          bankrProfileId:
-                            item.bankrProfileId,
-
-                          bankrSlug:
-                            item.bankrSlug,
-
-                          candidateName:
-                            item.candidateName,
-
-                          repositoryUrl:
-                            item.repositoryUrl,
-
-                          githubOwner:
-                            item.githubOwner,
-
-                          githubRepository:
-                            item.githubRepository,
-
-                          status:
-                            (
-                              input.decision ===
-                                "approve"
-                                ? "approved"
-                                : "rejected"
-                            ) as CandidateReviewStatus,
-
-                          note:
-                            input.note,
-
-                          decidedAt:
-                            now
-                        }
-                      ]
-                      .sort(
-                        (
-                          left,
-                          right
-                        ) =>
-                          left.key.localeCompare(
-                            right.key
-                          )
-                      )
-              };
 
             await saveCandidateReviewState(
               nextState
@@ -1625,4 +1961,21 @@ export async function updateCandidateReview(
       );
 
   return result;
+}
+
+export async function updateCandidateReview(
+  report:
+    BankrCandidateImportReport,
+
+  input:
+    CandidateReviewInput
+): Promise<
+  CandidateReviewView
+> {
+  return updateCandidateReviewsBatch(
+    report,
+    [
+      input
+    ]
+  );
 }

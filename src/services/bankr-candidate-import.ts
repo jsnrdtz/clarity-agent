@@ -53,6 +53,17 @@ import type {
 } from "./github-discovery.js";
 
 import {
+  discoverBankrCandidateGlobalGitHub,
+  searchGitHubRepositories
+} from "./bankr-global-github-search.js";
+
+import type {
+  BankrGlobalGitHubQuery,
+  BankrGlobalGitHubRepositoryMatch,
+  SearchGitHubRepositories
+} from "./bankr-global-github-search.js";
+
+import {
   parseGitHubOwnerUrl,
   rankBankrOwnerRepositories
 } from "./bankr-owner-repository.js";
@@ -185,6 +196,52 @@ export type BankrOwnerDiscoverySummary = {
     BankrOwnerDiscoveryResult[];
 };
 
+export type BankrGlobalGitHubDiscoveryResult = {
+  bankrProfileId: string;
+  bankrSlug: string;
+
+  status:
+    | "probable"
+    | "review"
+    | "weak"
+    | "not-found"
+    | "failed";
+
+  queries:
+    BankrGlobalGitHubQuery[];
+
+  repositoriesFound: number;
+
+  candidates:
+    BankrGlobalGitHubRepositoryMatch[];
+
+  error: {
+    code: string;
+    message: string;
+    retryable: boolean;
+  } | null;
+};
+
+export type BankrGlobalGitHubDiscoverySummary = {
+  enabled: boolean;
+
+  skippedNoToken: number;
+  skippedExistingGitHub: number;
+  skippedOwnerProbable: number;
+
+  attempted: number;
+  probable: number;
+  review: number;
+  weak: number;
+  notFound: number;
+  failed: number;
+
+  candidatesFound: number;
+
+  results:
+    BankrGlobalGitHubDiscoveryResult[];
+};
+
 export type BankrCandidateImportReport = {
   schemaVersion: "1.0";
   source: "bankr";
@@ -219,6 +276,9 @@ export type BankrCandidateImportReport = {
   ownerDiscovery:
     BankrOwnerDiscoverySummary;
 
+  globalGitHubDiscovery:
+    BankrGlobalGitHubDiscoverySummary;
+
   githubEvidence:
     BankrCandidateGitHubEvidenceSummary;
 };
@@ -249,6 +309,19 @@ export type BankrCandidateImportDependencies = {
 
   ownerDiscoveryEnabled?:
     boolean;
+
+  searchGlobalGitHub?:
+    SearchGitHubRepositories;
+
+  globalGitHubSearchEnabled?:
+    boolean;
+
+  globalGitHubSearchIntervalMs?:
+    number;
+
+  sleep?: (
+    milliseconds: number
+  ) => Promise<void>;
 
   now?: () => string;
 };
@@ -957,6 +1030,303 @@ async function discoverCandidatesFromOwners(
   return summary;
 }
 
+function createEmptyGlobalGitHubDiscoverySummary():
+BankrGlobalGitHubDiscoverySummary {
+  return {
+    enabled:
+      true,
+
+    skippedNoToken:
+      0,
+
+    skippedExistingGitHub:
+      0,
+
+    skippedOwnerProbable:
+      0,
+
+    attempted:
+      0,
+
+    probable:
+      0,
+
+    review:
+      0,
+
+    weak:
+      0,
+
+    notFound:
+      0,
+
+    failed:
+      0,
+
+    candidatesFound:
+      0,
+
+    results:
+      []
+  };
+}
+
+function hasProbableOwnerDiscovery(
+  candidate:
+    BankrCandidate,
+
+  ownerDiscovery:
+    BankrOwnerDiscoverySummary
+): boolean {
+  return ownerDiscovery
+    .results
+    .some(
+      (result) =>
+        result.bankrProfileId ===
+          candidate.bankrProfileId &&
+        result.bankrSlug ===
+          candidate.bankrSlug &&
+        result.status ===
+          "probable"
+    );
+}
+
+function countGlobalGitHubSearchableCandidates(
+  candidates:
+    BankrCandidate[],
+
+  ownerDiscovery:
+    BankrOwnerDiscoverySummary
+): number {
+  return candidates
+    .filter(
+      (candidate) =>
+        candidate
+          .githubRepositories
+          .length === 0 &&
+        !hasProbableOwnerDiscovery(
+          candidate,
+          ownerDiscovery
+        )
+    )
+    .length;
+}
+
+async function discoverCandidatesFromGlobalGitHub(
+  candidates:
+    BankrCandidate[],
+
+  ownerDiscovery:
+    BankrOwnerDiscoverySummary,
+
+  searchRepositories:
+    SearchGitHubRepositories,
+
+  minimumIntervalMs:
+    number,
+
+  sleep:
+    (
+      milliseconds: number
+    ) => Promise<void>
+): Promise<
+  BankrGlobalGitHubDiscoverySummary
+> {
+  const summary =
+    createEmptyGlobalGitHubDiscoverySummary();
+
+  let previousSearchStartedAt =
+    0;
+
+  const rateLimitedSearch:
+    SearchGitHubRepositories =
+    async (
+      query
+    ) => {
+      const waitMilliseconds =
+        Math.max(
+          0,
+
+          previousSearchStartedAt +
+            minimumIntervalMs -
+            Date.now()
+        );
+
+      if (
+        waitMilliseconds > 0
+      ) {
+        await sleep(
+          waitMilliseconds
+        );
+      }
+
+      previousSearchStartedAt =
+        Date.now();
+
+      return searchRepositories(
+        query
+      );
+    };
+
+  for (
+    const candidate
+    of candidates
+  ) {
+    if (
+      candidate
+        .githubRepositories
+        .length > 0
+    ) {
+      summary
+        .skippedExistingGitHub +=
+        1;
+
+      continue;
+    }
+
+    if (
+      hasProbableOwnerDiscovery(
+        candidate,
+        ownerDiscovery
+      )
+    ) {
+      summary
+        .skippedOwnerProbable +=
+        1;
+
+      continue;
+    }
+
+    summary.attempted +=
+      1;
+
+    try {
+      const discovery =
+        await discoverBankrCandidateGlobalGitHub(
+          candidate,
+          rateLimitedSearch
+        );
+
+      const matches =
+        discovery
+          .candidates
+          .filter(
+            (repository) =>
+              repository.status !==
+                "unrelated"
+          );
+
+      const status:
+        BankrGlobalGitHubDiscoveryResult[
+          "status"
+        ] =
+        matches.some(
+          (repository) =>
+            repository.status ===
+              "probable"
+        )
+          ? "probable"
+          : matches.some(
+                (repository) =>
+                  repository.status ===
+                    "review"
+              )
+            ? "review"
+            : matches.some(
+                  (repository) =>
+                    repository.status ===
+                      "weak"
+                )
+              ? "weak"
+              : "not-found";
+
+      if (
+        status === "probable"
+      ) {
+        summary.probable +=
+          1;
+      } else if (
+        status === "review"
+      ) {
+        summary.review +=
+          1;
+      } else if (
+        status === "weak"
+      ) {
+        summary.weak +=
+          1;
+      } else {
+        summary.notFound +=
+          1;
+      }
+
+      summary.candidatesFound +=
+        matches.length;
+
+      summary.results.push(
+        {
+          bankrProfileId:
+            candidate.bankrProfileId,
+
+          bankrSlug:
+            candidate.bankrSlug,
+
+          status,
+
+          queries:
+            discovery.queries,
+
+          repositoriesFound:
+            discovery.repositoriesFound,
+
+          candidates:
+            matches,
+
+          error:
+            null
+        }
+      );
+    } catch (error) {
+      summary.failed +=
+        1;
+
+      const details =
+        getErrorDetails(
+          error,
+          "GITHUB_GLOBAL_SEARCH_FAILED",
+          "Unknown global GitHub search error."
+        );
+
+      summary.results.push(
+        {
+          bankrProfileId:
+            candidate.bankrProfileId,
+
+          bankrSlug:
+            candidate.bankrSlug,
+
+          status:
+            "failed",
+
+          queries:
+            [],
+
+          repositoriesFound:
+            0,
+
+          candidates:
+            [],
+
+          error:
+            details
+        }
+      );
+    }
+  }
+
+  return summary;
+}
+
 export function getBankrCandidateReportPath(): string {
   return (
     process.env
@@ -987,6 +1357,10 @@ export async function generateBankrCandidateImportReport(
     dependencies.discoverOwner ??
     discoverGitHubOwner;
 
+  const searchGlobalGitHub =
+    dependencies.searchGlobalGitHub ??
+    searchGitHubRepositories;
+
   const ownerDiscoveryEnabled =
     dependencies
       .ownerDiscoveryEnabled ??
@@ -998,6 +1372,52 @@ export async function generateBankrCandidateImportReport(
           .GITHUB_TOKEN
           ?.trim()
       )
+    );
+
+  const globalGitHubSearchEnabled =
+    dependencies
+      .globalGitHubSearchEnabled ??
+    (
+      dependencies
+        .searchGlobalGitHub !==
+          undefined ||
+      Boolean(
+        process.env
+          .GITHUB_TOKEN
+          ?.trim()
+      )
+    );
+
+  const globalGitHubSearchIntervalMs =
+    Math.max(
+      0,
+
+      dependencies
+        .globalGitHubSearchIntervalMs ??
+      (
+        dependencies
+          .searchGlobalGitHub !==
+            undefined
+          ? 0
+          : 2_100
+      )
+    );
+
+  const sleep =
+    dependencies.sleep ??
+    (
+      async (
+        milliseconds: number
+      ): Promise<void> => {
+        await new Promise<void>(
+          (resolve) => {
+            setTimeout(
+              resolve,
+              milliseconds
+            );
+          }
+        );
+      }
     );
 
   const generatedAt =
@@ -1095,6 +1515,28 @@ export async function generateBankrCandidateImportReport(
               )
         };
 
+  const globalGitHubDiscovery =
+    globalGitHubSearchEnabled
+      ? await discoverCandidatesFromGlobalGitHub(
+          candidateReport.candidates,
+          ownerDiscovery,
+          searchGlobalGitHub,
+          globalGitHubSearchIntervalMs,
+          sleep
+        )
+      : {
+          ...createEmptyGlobalGitHubDiscoverySummary(),
+
+          enabled:
+            false,
+
+          skippedNoToken:
+            countGlobalGitHubSearchableCandidates(
+              candidateReport.candidates,
+              ownerDiscovery
+            )
+        };
+
   return {
     schemaVersion:
       "1.0",
@@ -1126,6 +1568,8 @@ export async function generateBankrCandidateImportReport(
     websiteDiscovery,
 
     ownerDiscovery,
+
+    globalGitHubDiscovery,
 
     githubEvidence:
       createGitHubEvidenceSummary(

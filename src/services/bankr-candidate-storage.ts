@@ -286,6 +286,220 @@ const ownerDiscoverySchema =
   )
     .passthrough();
 
+const globalGitHubQuerySchema =
+  z.object(
+    {
+      source:
+        z.enum(
+          [
+            "project-name",
+            "compact-slug",
+            "official-domain"
+          ]
+        ),
+
+      query:
+        z.string().min(1)
+    }
+  )
+    .passthrough();
+
+const globalGitHubRepositoryMatchSchema =
+  z.object(
+    {
+      owner:
+        z.string().min(1),
+
+      repository:
+        z.string().min(1),
+
+      fullName:
+        z.string().min(1),
+
+      url:
+        z.string().url(),
+
+      role:
+        z.enum(
+          [
+            "primary-candidate",
+            "component",
+            "documentation",
+            "website",
+            "unknown"
+          ]
+        ),
+
+      score:
+        z.number()
+          .min(0)
+          .max(100),
+
+      status:
+        z.enum(
+          [
+            "probable",
+            "review",
+            "weak",
+            "unrelated"
+          ]
+        ),
+
+      probable:
+        z.boolean(),
+
+      matchedBy:
+        z.array(
+          z.enum(
+            [
+              "project-name",
+              "compact-slug",
+              "official-domain"
+            ]
+          )
+        ),
+
+      reasons:
+        z.array(
+          z.string()
+        )
+    }
+  )
+    .passthrough();
+
+const globalGitHubDiscoverySchema =
+  z.object(
+    {
+      enabled:
+        z.boolean(),
+
+      skippedNoToken:
+        z.number().int().nonnegative(),
+
+      skippedExistingGitHub:
+        z.number().int().nonnegative(),
+
+      skippedOwnerProbable:
+        z.number().int().nonnegative(),
+
+      attempted:
+        z.number().int().nonnegative(),
+
+      probable:
+        z.number().int().nonnegative(),
+
+      review:
+        z.number().int().nonnegative(),
+
+      weak:
+        z.number().int().nonnegative(),
+
+      notFound:
+        z.number().int().nonnegative(),
+
+      failed:
+        z.number().int().nonnegative(),
+
+      candidatesFound:
+        z.number().int().nonnegative(),
+
+      results:
+        z.array(
+          z.object(
+            {
+              bankrProfileId:
+                z.string().min(1),
+
+              bankrSlug:
+                z.string().min(1),
+
+              status:
+                z.enum(
+                  [
+                    "probable",
+                    "review",
+                    "weak",
+                    "not-found",
+                    "failed"
+                  ]
+                ),
+
+              queries:
+                z.array(
+                  globalGitHubQuerySchema
+                ),
+
+              repositoriesFound:
+                z.number()
+                  .int()
+                  .nonnegative(),
+
+              candidates:
+                z.array(
+                  globalGitHubRepositoryMatchSchema
+                ),
+
+              error:
+                z.object(
+                  {
+                    code:
+                      z.string(),
+
+                    message:
+                      z.string(),
+
+                    retryable:
+                      z.boolean()
+                  }
+                )
+                  .nullable()
+            }
+          )
+            .passthrough()
+        )
+    }
+  )
+    .passthrough()
+    .default(
+      {
+        enabled:
+          false,
+
+        skippedNoToken:
+          0,
+
+        skippedExistingGitHub:
+          0,
+
+        skippedOwnerProbable:
+          0,
+
+        attempted:
+          0,
+
+        probable:
+          0,
+
+        review:
+          0,
+
+        weak:
+          0,
+
+        notFound:
+          0,
+
+        failed:
+          0,
+
+        candidatesFound:
+          0,
+
+        results:
+          []
+      }
+    );
+
 const candidateReportSchema =
   z.object(
     {
@@ -367,6 +581,9 @@ const candidateReportSchema =
 
       ownerDiscovery:
         ownerDiscoverySchema,
+
+      globalGitHubDiscovery:
+        globalGitHubDiscoverySchema,
 
       githubEvidence:
         z.object(

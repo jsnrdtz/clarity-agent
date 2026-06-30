@@ -31,8 +31,10 @@ import {
   authenticateCandidateReview,
   createPublicCandidateReviewView,
   getCandidateReviewView,
+  readCandidateReviewBatchRequest,
   readCandidateReviewRequest,
-  updateCandidateReview
+  updateCandidateReview,
+  updateCandidateReviewsBatch
 } from "../services/candidate-review.js";
 
 import {
@@ -569,6 +571,37 @@ async function routePostRequest(
   response: ServerResponse,
   dependencies: ApiDependencies
 ): Promise<void> {
+  if (
+    pathname ===
+    "/api/v1/admin/candidates/bankr/reviews/batch"
+  ) {
+    authenticateCandidateReview(
+      request.headers.authorization
+    );
+
+    const report =
+      await loadPublishedCandidateReport();
+
+    const input =
+      await readCandidateReviewBatchRequest(
+        request
+      );
+
+    const review =
+      await updateCandidateReviewsBatch(
+        report,
+        input.reviews
+      );
+
+    sendJson(
+      response,
+      200,
+      review
+    );
+
+    return;
+  }
+
   if (
     pathname ===
     "/api/v1/admin/candidates/bankr/reviews"

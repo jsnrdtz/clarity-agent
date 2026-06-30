@@ -2417,3 +2417,76 @@ a {
     grid-template-columns: 1fr;
   }
 }
+
+.cra-bulk {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.cra-bulk > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.cra-bulk button {
+  min-height: 2.5rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--line);
+  background: var(--text);
+  color: var(--background);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cra-bulk button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.cra-bulk .cra-secondary {
+  background: transparent;
+  color: var(--text);
+}
+
+.cra-bulk .cra-reject {
+  border-color: currentColor;
+}
+
+.cra-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  align-self: flex-start;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.cra-select input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+}
+
+.cra-card-heading {
+  flex: 1;
+}
+
+@media (max-width: 760px) {
+  .cra-bulk {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cra-bulk > div {
+    width: 100%;
+  }
+}

@@ -133,6 +133,44 @@ function createReport(
         []
     },
 
+    globalGitHubDiscovery: {
+      enabled:
+        false,
+
+      skippedNoToken:
+        0,
+
+      skippedExistingGitHub:
+        0,
+
+      skippedOwnerProbable:
+        0,
+
+      attempted:
+        0,
+
+      probable:
+        0,
+
+      review:
+        0,
+
+      weak:
+        0,
+
+      notFound:
+        0,
+
+      failed:
+        0,
+
+      candidatesFound:
+        0,
+
+      results:
+        []
+    },
+
     githubEvidence: {
       candidatesWithGitHub:
         0,

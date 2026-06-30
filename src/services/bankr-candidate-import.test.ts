@@ -642,3 +642,157 @@ test(
     );
   }
 );
+
+test(
+  "discovers a missing candidate through global GitHub search",
+  async () => {
+    const searchQueries:
+      string[] =
+      [];
+
+    const report =
+      await generateBankrCandidateImportReport(
+        {
+          listProfiles:
+            async () => [
+              createSummary(
+                "profile-search",
+                "search-agent"
+              )
+            ],
+
+          getProfile:
+            async () =>
+              createDetail(
+                {
+                  id:
+                    "profile-search",
+
+                  slug:
+                    "search-agent",
+
+                  projectName:
+                    "Search Agent",
+
+                  description:
+                    "Autonomous AI agent.",
+
+                  website:
+                    ""
+                }
+              ),
+
+          ownerDiscoveryEnabled:
+            false,
+
+          globalGitHubSearchEnabled:
+            true,
+
+          globalGitHubSearchIntervalMs:
+            0,
+
+          searchGlobalGitHub:
+            async (
+              query
+            ) => {
+              searchQueries.push(
+                query
+              );
+
+              return [
+                {
+                  owner:
+                    "search-agent",
+
+                  repository:
+                    "search-agent",
+
+                  fullName:
+                    "search-agent/search-agent",
+
+                  url:
+                    "https://github.com/search-agent/search-agent",
+
+                  description:
+                    "Search Agent autonomous AI agent.",
+
+                  homepage:
+                    null,
+
+                  language:
+                    "TypeScript",
+
+                  stars:
+                    12,
+
+                  forks:
+                    1,
+
+                  openIssues:
+                    0,
+
+                  pushedAt:
+                    new Date()
+                      .toISOString(),
+
+                  fork:
+                    false,
+
+                  archived:
+                    false,
+
+                  disabled:
+                    false
+                }
+              ];
+            },
+
+          now:
+            () =>
+              "2026-06-30T10:00:00.000Z"
+        }
+      );
+
+    assert.equal(
+      searchQueries.length,
+      2
+    );
+
+    assert.equal(
+      report
+        .globalGitHubDiscovery
+        .enabled,
+      true
+    );
+
+    assert.equal(
+      report
+        .globalGitHubDiscovery
+        .attempted,
+      1
+    );
+
+    assert.equal(
+      report
+        .globalGitHubDiscovery
+        .probable,
+      1
+    );
+
+    assert.equal(
+      report
+        .globalGitHubDiscovery
+        .candidatesFound,
+      1
+    );
+
+    assert.equal(
+      report
+        .globalGitHubDiscovery
+        .results[0]
+        ?.candidates[0]
+        ?.fullName,
+      "search-agent/search-agent"
+    );
+  }
+);

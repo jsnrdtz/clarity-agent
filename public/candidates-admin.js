@@ -6,7 +6,13 @@ const state = {
     "",
 
   busyKey:
-    null
+    null,
+
+  batchBusy:
+    false,
+
+  selectedKeys:
+    new Set()
 };
 
 const tokenElement =
@@ -57,6 +63,37 @@ const proposalCountElement =
 const copyProposalsElement =
   document.querySelector(
     "#cra-copy-proposals"
+  );
+
+
+const selectedCountElement =
+  document.querySelector(
+    "#cra-selected-count"
+  );
+
+const selectVisibleElement =
+  document.querySelector(
+    "#cra-select-visible"
+  );
+
+const clearSelectedElement =
+  document.querySelector(
+    "#cra-clear-selected"
+  );
+
+const approveSelectedElement =
+  document.querySelector(
+    "#cra-approve-selected"
+  );
+
+const rejectSelectedElement =
+  document.querySelector(
+    "#cra-reject-selected"
+  );
+
+const resetSelectedElement =
+  document.querySelector(
+    "#cra-reset-selected"
   );
 
 function escapeHtml(
@@ -157,7 +194,9 @@ function createSummaryCard(
 async function requestReview(
   {
     method = "GET",
-    body = null
+    body = null,
+    path =
+      "/api/v1/admin/candidates/bankr/reviews"
   } = {}
 ) {
   const controller =
@@ -174,7 +213,7 @@ async function requestReview(
   try {
     const response =
       await fetch(
-        "/api/v1/admin/candidates/bankr/reviews",
+        path,
         {
           method,
 
@@ -262,12 +301,120 @@ function getSearchText(
     item.githubRepository,
     item.repositoryUrl,
     item.candidateDescription,
+    item.source,
     item.evidence?.relationship,
-    item.evidence?.role
+    item.evidence?.role,
+    ...(
+      item.evidence?.matchedBy ??
+      []
+    ),
+    ...(
+      item.evidence?.queries ??
+      []
+    ),
+    ...(
+      item.evidence?.reasons ??
+      []
+    )
   ]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+}
+
+function getVisibleItems() {
+  if (!state.view) {
+    return [];
+  }
+
+  const query =
+    searchElement
+      .value
+      .trim()
+      .toLowerCase();
+
+  const filter =
+    filterElement.value;
+
+  return state
+    .view
+    .items
+    .filter(
+      (item) => {
+        const status =
+          getItemStatus(
+            item
+          );
+
+        const matchesFilter =
+          filter === "all" ||
+          status === filter ||
+          (
+            filter === "probable" &&
+            item.evidence
+              ?.probable === true
+          );
+
+        return (
+          matchesFilter &&
+          (
+            !query ||
+            getSearchText(
+              item
+            ).includes(
+              query
+            )
+          )
+        );
+      }
+    );
+}
+
+function updateBulkControls(
+  visibleItems =
+    getVisibleItems()
+) {
+  const selectedCount =
+    state.selectedKeys.size;
+
+  const visibleKeys =
+    visibleItems.map(
+      (item) =>
+        item.key
+    );
+
+  const allVisibleSelected =
+    visibleKeys.length > 0 &&
+    visibleKeys.every(
+      (key) =>
+        state.selectedKeys.has(
+          key
+        )
+    );
+
+  selectedCountElement.textContent =
+    `${selectedCount} SELECTED`;
+
+  selectVisibleElement.disabled =
+    state.batchBusy ||
+    visibleKeys.length === 0 ||
+    allVisibleSelected;
+
+  clearSelectedElement.disabled =
+    state.batchBusy ||
+    selectedCount === 0;
+
+  approveSelectedElement.disabled =
+    state.batchBusy ||
+    selectedCount === 0;
+
+  rejectSelectedElement.disabled =
+    state.batchBusy ||
+    selectedCount === 0;
+
+  resetSelectedElement.disabled =
+    state.batchBusy ||
+    selectedCount === 0;
 }
 
 function renderEvidence(
@@ -293,6 +440,13 @@ function renderEvidence(
         true
         ? "probable"
         : null,
+      ...(
+        evidence.matchedBy ??
+        []
+      ).map(
+        (source) =>
+          `matched ${source}`
+      ),
       item.source
     ]
       .filter(Boolean);
@@ -322,8 +476,14 @@ function renderReviewItem(
     );
 
   const busy =
+    state.batchBusy ||
     state.busyKey ===
       item.key;
+
+  const selected =
+    state.selectedKeys.has(
+      item.key
+    );
 
   const note =
     item.decision
@@ -343,7 +503,20 @@ function renderReviewItem(
       data-key="${escapeHtml(item.key)}"
     >
       <div class="cr-card-head">
-        <div>
+        <label class="cra-select">
+          <input
+            type="checkbox"
+            data-select-key="${escapeHtml(item.key)}"
+            ${selected ? "checked" : ""}
+            ${busy ? "disabled" : ""}
+          >
+
+          <span>
+            SELECT
+          </span>
+        </label>
+
+        <div class="cra-card-heading">
           <span class="cr-label cra-label-${escapeHtml(status)}">
             ${label}
           </span>
@@ -410,10 +583,20 @@ function renderReviewItem(
 
       <ul class="cr-reasons">
         ${
-          (
-            item.evidence?.reasons ??
-            []
-          )
+          [
+            ...(
+              item.evidence?.reasons ??
+              []
+            ),
+
+            ...(
+              item.evidence?.queries ??
+              []
+            ).map(
+              (query) =>
+                `SEARCH QUERY: ${query}`
+            )
+          ]
             .map(
               (reason) => `
                 <li>
@@ -475,45 +658,31 @@ function render() {
     return;
   }
 
-  const query =
-    searchElement
-      .value
-      .trim()
-      .toLowerCase();
+  const currentKeys =
+    new Set(
+      state.view.items.map(
+        (item) =>
+          item.key
+      )
+    );
 
-  const filter =
-    filterElement.value;
+  for (
+    const key
+    of state.selectedKeys
+  ) {
+    if (
+      !currentKeys.has(
+        key
+      )
+    ) {
+      state.selectedKeys.delete(
+        key
+      );
+    }
+  }
 
   const items =
-    state.view.items.filter(
-      (item) => {
-        const status =
-          getItemStatus(
-            item
-          );
-
-        const matchesFilter =
-          filter === "all" ||
-          status === filter ||
-          (
-            filter === "probable" &&
-            item.evidence
-              ?.probable === true
-          );
-
-        return (
-          matchesFilter &&
-          (
-            !query ||
-            getSearchText(
-              item
-            ).includes(
-              query
-            )
-          )
-        );
-      }
-    );
+    getVisibleItems();
 
   summaryElement.innerHTML =
     [
@@ -559,6 +728,10 @@ function render() {
         proposal.eligible
     );
 
+  updateBulkControls(
+    items
+  );
+
   resultsElement.innerHTML =
     items.length > 0
       ? items
@@ -602,6 +775,8 @@ async function loadReviewQueue() {
   try {
     state.view =
       await requestReview();
+
+    state.selectedKeys.clear();
 
     statusElement.textContent =
       `LOADED ${state.view.counts.total} REPOSITORIES`;
@@ -702,6 +877,100 @@ async function submitDecision(
   }
 }
 
+async function submitBatchDecision(
+  action
+) {
+  if (
+    !state.view ||
+    state.selectedKeys.size === 0
+  ) {
+    return;
+  }
+
+  const items =
+    state.view.items.filter(
+      (item) =>
+        state.selectedKeys.has(
+          item.key
+        )
+    );
+
+  if (
+    items.length === 0
+  ) {
+    return;
+  }
+
+  const reviews =
+    items.map(
+      (item) => {
+        const noteElement =
+          document.querySelector(
+            `[data-note-key="${CSS.escape(item.key)}"]`
+          );
+
+        return {
+          bankrProfileId:
+            item.bankrProfileId,
+
+          repositoryUrl:
+            item.repositoryUrl,
+
+          decision:
+            action,
+
+          note:
+            action === "reset"
+              ? null
+              : noteElement
+                  ?.value
+                  ?.trim() ||
+                item.decision
+                  ?.note ||
+                null
+        };
+      }
+    );
+
+  state.batchBusy =
+    true;
+
+  statusElement.textContent =
+    `${action.toUpperCase()} ${reviews.length} SELECTED…`;
+
+  render();
+
+  try {
+    state.view =
+      await requestReview(
+        {
+          method:
+            "POST",
+
+          path:
+            "/api/v1/admin/candidates/bankr/reviews/batch",
+
+          body: {
+            reviews
+          }
+        }
+      );
+
+    state.selectedKeys.clear();
+
+    statusElement.textContent =
+      `${action.toUpperCase()} SAVED FOR ${reviews.length} REPOSITORIES`;
+  } catch (error) {
+    statusElement.textContent =
+      error.message;
+  } finally {
+    state.batchBusy =
+      false;
+
+    render();
+  }
+}
+
 loadElement.addEventListener(
   "click",
   () => {
@@ -717,6 +986,8 @@ forgetElement.addEventListener(
 
     state.view =
       null;
+
+    state.selectedKeys.clear();
 
     tokenElement.value =
       "";
@@ -750,6 +1021,37 @@ filterElement.addEventListener(
 );
 
 resultsElement.addEventListener(
+  "change",
+  (event) => {
+    const target =
+      event.target.closest(
+        "[data-select-key]"
+      );
+
+    if (!target) {
+      return;
+    }
+
+    const key =
+      target.dataset.selectKey;
+
+    if (
+      target.checked
+    ) {
+      state.selectedKeys.add(
+        key
+      );
+    } else {
+      state.selectedKeys.delete(
+        key
+      );
+    }
+
+    updateBulkControls();
+  }
+);
+
+resultsElement.addEventListener(
   "click",
   (event) => {
     const target =
@@ -764,6 +1066,78 @@ resultsElement.addEventListener(
     void submitDecision(
       target.dataset.key,
       target.dataset.action
+    );
+  }
+);
+
+selectVisibleElement.addEventListener(
+  "click",
+  () => {
+    for (
+      const item
+      of getVisibleItems()
+    ) {
+      state.selectedKeys.add(
+        item.key
+      );
+    }
+
+    for (
+      const checkbox
+      of resultsElement.querySelectorAll(
+        "[data-select-key]"
+      )
+    ) {
+      checkbox.checked =
+        true;
+    }
+
+    updateBulkControls();
+  }
+);
+
+clearSelectedElement.addEventListener(
+  "click",
+  () => {
+    state.selectedKeys.clear();
+
+    for (
+      const checkbox
+      of resultsElement.querySelectorAll(
+        "[data-select-key]"
+      )
+    ) {
+      checkbox.checked =
+        false;
+    }
+
+    updateBulkControls();
+  }
+);
+
+approveSelectedElement.addEventListener(
+  "click",
+  () => {
+    void submitBatchDecision(
+      "approve"
+    );
+  }
+);
+
+rejectSelectedElement.addEventListener(
+  "click",
+  () => {
+    void submitBatchDecision(
+      "reject"
+    );
+  }
+);
+
+resetSelectedElement.addEventListener(
+  "click",
+  () => {
+    void submitBatchDecision(
+      "reset"
     );
   }
 );

@@ -1491,6 +1491,44 @@ function createCandidateReportFixture() {
         []
     },
 
+    globalGitHubDiscovery: {
+      enabled:
+        false,
+
+      skippedNoToken:
+        0,
+
+      skippedExistingGitHub:
+        0,
+
+      skippedOwnerProbable:
+        0,
+
+      attempted:
+        0,
+
+      probable:
+        0,
+
+      review:
+        0,
+
+      weak:
+        0,
+
+      notFound:
+        0,
+
+      failed:
+        0,
+
+      candidatesFound:
+        0,
+
+      results:
+        []
+    },
+
     githubEvidence: {
       candidatesWithGitHub:
         0,
@@ -2349,5 +2387,223 @@ test(
       ).code,
       "CANDIDATE_REVIEW_NOT_CONFIGURED"
     );
+  }
+);
+
+test(
+  "applies authenticated candidate review batches",
+  async () => {
+    const uploadToken =
+      "0123456789abcdef0123456789abcdef";
+
+    const reviewToken =
+      "abcdef0123456789abcdef0123456789";
+
+    const suffix =
+      `${process.pid}-${Date.now()}`;
+
+    const reportPath =
+      `/tmp/clarity-review-batch-report-${suffix}.json`;
+
+    const reviewPath =
+      `/tmp/clarity-review-batch-state-${suffix}.json`;
+
+    const restoreUpload =
+      setCandidateUploadEnvironment(
+        uploadToken,
+        reportPath
+      );
+
+    const restoreReview =
+      setCandidateReviewEnvironment(
+        reviewToken,
+        reviewPath
+      );
+
+    try {
+      const report:
+        any =
+        createCandidateReportFixture();
+
+      report
+        .candidates[0]
+        .githubRepositories = [
+          {
+            owner:
+              "example-org",
+
+            repository:
+              "example-agent",
+
+            url:
+              "https://github.com/example-org/example-agent",
+
+            sources: [
+              "website-page"
+            ],
+
+            relationship:
+              "primary",
+
+            confidence:
+              "high",
+
+            reasons: [
+              "Official primary repository."
+            ]
+          },
+
+          {
+            owner:
+              "example-org",
+
+            repository:
+              "example-agent-tools",
+
+            url:
+              "https://github.com/example-org/example-agent-tools",
+
+            sources: [
+              "website-page"
+            ],
+
+            relationship:
+              "component",
+
+            confidence:
+              "medium",
+
+            reasons: [
+              "Additional project component."
+            ]
+          }
+        ];
+
+      const upload =
+        await getJson(
+          "/api/v1/admin/candidates/bankr",
+          {
+            method:
+              "POST",
+
+            headers: {
+              Authorization:
+                `Bearer ${uploadToken}`,
+
+              "Content-Type":
+                "application/json"
+            },
+
+            body:
+              JSON.stringify(
+                report
+              )
+          }
+        );
+
+      assert.equal(
+        upload.response.status,
+        200
+      );
+
+      const batch =
+        await getJson(
+          "/api/v1/admin/candidates/bankr/reviews/batch",
+          {
+            method:
+              "POST",
+
+            headers: {
+              Authorization:
+                `Bearer ${reviewToken}`,
+
+              "Content-Type":
+                "application/json"
+            },
+
+            body:
+              JSON.stringify(
+                {
+                  reviews: [
+                    {
+                      bankrProfileId:
+                        "profile-1",
+
+                      repositoryUrl:
+                        "https://github.com/example-org/example-agent",
+
+                      decision:
+                        "approve",
+
+                      note:
+                        "Verified primary."
+                    },
+
+                    {
+                      bankrProfileId:
+                        "profile-1",
+
+                      repositoryUrl:
+                        "https://github.com/example-org/example-agent-tools",
+
+                      decision:
+                        "reject",
+
+                      note:
+                        "Component only."
+                    }
+                  ]
+                }
+              )
+          }
+        );
+
+      assert.equal(
+        batch.response.status,
+        200
+      );
+
+      const body =
+        batch.body as {
+          counts: {
+            approved: number;
+            rejected: number;
+          };
+        };
+
+      assert.equal(
+        body.counts.approved,
+        1
+      );
+
+      assert.equal(
+        body.counts.rejected,
+        1
+      );
+    } finally {
+      restoreReview();
+      restoreUpload();
+
+      const {
+        unlink
+      } =
+        await import(
+          "node:fs/promises"
+        );
+
+      await Promise.all(
+        [
+          reportPath,
+          reviewPath
+        ].map(
+          (filePath) =>
+            unlink(
+              filePath
+            ).catch(
+              () => undefined
+            )
+        )
+      );
+    }
   }
 );
