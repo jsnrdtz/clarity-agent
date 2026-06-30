@@ -15,6 +15,7 @@ import type {
 export type BankrGitHubEvidenceSource =
   | "description"
   | "website"
+  | "website-page"
   | "team-member-link"
   | "product-url"
   | "product-description"
@@ -98,7 +99,7 @@ export type BankrCandidateReport = {
   };
 };
 
-type TextEvidence = {
+export type BankrGitHubTextEvidence = {
   source:
     BankrGitHubEvidenceSource;
 
@@ -139,6 +140,7 @@ const GITHUB_SOURCE_ORDER:
   BankrGitHubEvidenceSource[] =
     [
       "website",
+      "website-page",
       "product-url",
       "team-member-link",
       "description",
@@ -313,9 +315,9 @@ function normalizeGitHubRepositoryUrl(
 function collectTextEvidence(
   profile:
     BankrAgentProfileDetail
-): TextEvidence[] {
+): BankrGitHubTextEvidence[] {
   const evidence:
-    TextEvidence[] =
+    BankrGitHubTextEvidence[] =
     [];
 
   const description =
@@ -435,21 +437,140 @@ function collectTextEvidence(
   return evidence;
 }
 
+function addRepositoryToMap(
+  repositories:
+    Map<
+      string,
+      BankrGitHubRepository
+    >,
+
+  repository:
+    BankrGitHubRepository
+): void {
+  const key =
+    [
+      repository
+        .owner
+        .toLowerCase(),
+
+      repository
+        .repository
+        .toLowerCase()
+    ].join("/");
+
+  const existing =
+    repositories.get(
+      key
+    );
+
+  if (!existing) {
+    repositories.set(
+      key,
+      {
+        ...repository,
+
+        sources: [
+          ...repository.sources
+        ]
+      }
+    );
+
+    return;
+  }
+
+  for (
+    const source
+    of repository.sources
+  ) {
+    if (
+      !existing
+        .sources
+        .includes(
+          source
+        )
+    ) {
+      existing
+        .sources
+        .push(
+          source
+        );
+    }
+  }
+
+  if (
+    getClassificationPriority(
+      repository
+    ) >
+    getClassificationPriority(
+      existing
+    )
+  ) {
+    existing.relationship =
+      repository.relationship;
+
+    existing.confidence =
+      repository.confidence;
+
+    existing.reasons =
+      repository.reasons;
+  }
+}
+
+function finalizeRepositories(
+  repositories:
+    Map<
+      string,
+      BankrGitHubRepository
+    >
+): BankrGitHubRepository[] {
+  return [
+    ...repositories.values()
+  ]
+    .map(
+      (repository) => ({
+        ...repository,
+
+        sources:
+          [
+            ...repository.sources
+          ].sort(
+            (
+              left,
+              right
+            ) =>
+              GITHUB_SOURCE_ORDER
+                .indexOf(left) -
+              GITHUB_SOURCE_ORDER
+                .indexOf(right)
+          )
+      })
+    )
+    .sort(
+      (
+        left,
+        right
+      ) =>
+        left.url.localeCompare(
+          right.url,
+          "en",
+          {
+            sensitivity:
+              "base"
+          }
+        )
+    );
+}
+
 export function
-extractBankrGitHubRepositories(
-  profile:
-    BankrAgentProfileDetail
+extractBankrGitHubRepositoriesFromEvidence(
+  textEvidence:
+    BankrGitHubTextEvidence[]
 ): BankrGitHubRepository[] {
   const repositories =
     new Map<
       string,
       BankrGitHubRepository
     >();
-
-  const textEvidence =
-    collectTextEvidence(
-      profile
-    );
 
   for (
     const evidence
@@ -481,7 +602,8 @@ extractBankrGitHubRepositories(
       }
 
       const matchIndex =
-        match.index ?? 0;
+        match.index ??
+        0;
 
       const contextStart =
         Math.max(
@@ -519,60 +641,8 @@ extractBankrGitHubRepositories(
           }
         );
 
-      const key =
-        [
-          parsed
-            .owner
-            .toLowerCase(),
-
-          parsed
-            .repository
-            .toLowerCase()
-        ].join("/");
-
-      const existing =
-        repositories.get(
-          key
-        );
-
-      if (existing) {
-        if (
-          !existing
-            .sources
-            .includes(
-              evidence.source
-            )
-        ) {
-          existing
-            .sources
-            .push(
-              evidence.source
-            );
-        }
-
-        if (
-          getClassificationPriority(
-            classification
-          ) >
-          getClassificationPriority(
-            existing
-          )
-        ) {
-          existing.relationship =
-            classification.relationship;
-
-          existing.confidence =
-            classification.confidence;
-
-          existing.reasons =
-            classification.reasons;
-        }
-
-        continue;
-      }
-
-      repositories.set(
-        key,
+      addRepositoryToMap(
+        repositories,
         {
           ...parsed,
 
@@ -593,42 +663,52 @@ extractBankrGitHubRepositories(
     }
   }
 
-  return [
-    ...repositories.values()
-  ]
-    .map(
-      (repository) => ({
-        ...repository,
+  return finalizeRepositories(
+    repositories
+  );
+}
 
-        sources:
-          [
-            ...repository.sources
-          ].sort(
-            (
-              left,
-              right
-            ) =>
-              GITHUB_SOURCE_ORDER
-                .indexOf(left) -
-              GITHUB_SOURCE_ORDER
-                .indexOf(right)
-          )
-      })
-    )
-    .sort(
-      (
-        left,
-        right
-      ) =>
-        left.url.localeCompare(
-          right.url,
-          "en",
-          {
-            sensitivity:
-              "base"
-          }
-        )
+export function mergeBankrGitHubRepositories(
+  existingRepositories:
+    BankrGitHubRepository[],
+
+  discoveredRepositories:
+    BankrGitHubRepository[]
+): BankrGitHubRepository[] {
+  const repositories =
+    new Map<
+      string,
+      BankrGitHubRepository
+    >();
+
+  for (
+    const repository
+    of [
+      ...existingRepositories,
+      ...discoveredRepositories
+    ]
+  ) {
+    addRepositoryToMap(
+      repositories,
+      repository
     );
+  }
+
+  return finalizeRepositories(
+    repositories
+  );
+}
+
+export function
+extractBankrGitHubRepositories(
+  profile:
+    BankrAgentProfileDetail
+): BankrGitHubRepository[] {
+  return extractBankrGitHubRepositoriesFromEvidence(
+    collectTextEvidence(
+      profile
+    )
+  );
 }
 
 export function createBankrCandidate(
@@ -753,6 +833,71 @@ export function createBankrCandidate(
 
     warnings
   };
+}
+
+export function applyBankrCandidateRepositoryIdentity(
+  candidate:
+    BankrCandidate
+): BankrCandidate {
+  const projectIdentities =
+    [
+      candidate.name,
+      candidate.bankrSlug
+    ]
+      .map(
+        (value) =>
+          value
+            .trim()
+            .toLowerCase()
+            .replace(
+              /[^a-z0-9]/g,
+              ""
+            )
+      )
+      .filter(
+        (value) =>
+          value.length >= 3
+      );
+
+  for (
+    const repository
+    of candidate.githubRepositories
+  ) {
+    if (
+      repository.relationship !==
+        "unknown"
+    ) {
+      continue;
+    }
+
+    const repositoryIdentity =
+      repository
+        .repository
+        .trim()
+        .toLowerCase()
+        .replace(
+          /[^a-z0-9]/g,
+          ""
+        );
+
+    if (
+      !projectIdentities.includes(
+        repositoryIdentity
+      )
+    ) {
+      continue;
+    }
+
+    repository.relationship =
+      "primary";
+
+    repository.reasons = [
+      "Repository name exactly matches the Bankr project name or slug.",
+      ...repository.reasons
+    ];
+  }
+
+  return candidate;
 }
 
 function createConflictGroups(

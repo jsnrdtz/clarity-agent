@@ -147,3 +147,7 @@ vite.config.ts.timestamp-*
 data/snapshots/*.json
 data/snapshots/*.tmp
 data/refresh.lock
+
+# Runtime Bankr candidate reports
+data/candidates/*.json
+data/candidates/*.tmp

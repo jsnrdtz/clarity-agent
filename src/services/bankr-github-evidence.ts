@@ -45,6 +45,9 @@ const SOURCE_CONFIDENCE:
     website:
       "high",
 
+    "website-page":
+      "high",
+
     "product-url":
       "high",
 

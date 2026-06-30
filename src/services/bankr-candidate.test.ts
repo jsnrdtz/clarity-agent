@@ -8,7 +8,8 @@ import type {
 import {
   buildBankrCandidateReport,
   createBankrCandidate,
-  extractBankrGitHubRepositories
+  extractBankrGitHubRepositories,
+  extractBankrGitHubRepositoriesFromEvidence
 } from "./bankr-candidate.js";
 
 function createProfile(
@@ -617,6 +618,100 @@ test(
         "website",
         "description"
       ]
+    );
+  }
+);
+
+test(
+  "extracts GitHub evidence collected from an official website page",
+  () => {
+    const repositories =
+      extractBankrGitHubRepositoriesFromEvidence(
+        [
+          {
+            source:
+              "website-page",
+
+            text:
+              "Official source code: https://github.com/ExampleOrg/WebAgent"
+          }
+        ]
+      );
+
+    assert.equal(
+      repositories.length,
+      1
+    );
+
+    assert.deepEqual(
+      repositories[0],
+      {
+        owner:
+          "ExampleOrg",
+
+        repository:
+          "WebAgent",
+
+        url:
+          "https://github.com/ExampleOrg/WebAgent",
+
+        sources: [
+          "website-page"
+        ],
+
+        relationship:
+          "primary",
+
+        confidence:
+          "high",
+
+        reasons: [
+          "Primary repository language was found near the repository reference.",
+          "Evidence source: website-page."
+        ]
+      }
+    );
+  }
+);
+
+test(
+  "promotes an exact repository name match to primary",
+  async () => {
+    const {
+      applyBankrCandidateRepositoryIdentity
+    } =
+      await import(
+        "./bankr-candidate.js"
+      );
+
+    const candidate =
+      createBankrCandidate(
+        createProfile(
+          {
+            slug:
+              "azzle",
+
+            projectName:
+              "Azzle",
+
+            website:
+              "https://example.com",
+
+            description:
+              "Repository: https://github.com/Dabus123/azzle"
+          }
+        )
+      );
+
+    applyBankrCandidateRepositoryIdentity(
+      candidate
+    );
+
+    assert.equal(
+      candidate
+        .githubRepositories[0]
+        ?.relationship,
+      "primary"
     );
   }
 );

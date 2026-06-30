@@ -312,3 +312,333 @@ test(
     }
   }
 );
+
+test(
+  "enriches a Bankr candidate from its official website",
+  async () => {
+    const report =
+      await generateBankrCandidateImportReport(
+        {
+          listProfiles:
+            async () => [
+              createSummary(
+                "profile-website",
+                "website-agent"
+              )
+            ],
+
+          getProfile:
+            async () =>
+              createDetail(
+                {
+                  id:
+                    "profile-website",
+
+                  slug:
+                    "website-agent",
+
+                  description:
+                    "No repository is listed here.",
+
+                  website:
+                    "https://agent.example"
+                }
+              ),
+
+          discoverWebsite:
+            async (
+              websiteUrl
+            ) => ({
+              requestedUrl:
+                websiteUrl,
+
+              finalUrl:
+                websiteUrl,
+
+              redirects:
+                0,
+
+              bytesRead:
+                300,
+
+              repositories: [
+                {
+                  owner:
+                    "ExampleOrg",
+
+                  repository:
+                    "WebsiteAgent",
+
+                  url:
+                    "https://github.com/ExampleOrg/WebsiteAgent",
+
+                  sources: [
+                    "website-page"
+                  ],
+
+                  relationship:
+                    "primary",
+
+                  confidence:
+                    "high",
+
+                  reasons: [
+                    "Official website source."
+                  ]
+                }
+              ],
+
+              ownerUrls: [
+                "https://github.com/ExampleOrg"
+              ]
+            }),
+
+          now:
+            () =>
+              "2026-06-30T00:00:00.000Z"
+        }
+      );
+
+    assert.equal(
+      report
+        .websiteDiscovery
+        .attempted,
+      1
+    );
+
+    assert.equal(
+      report
+        .websiteDiscovery
+        .found,
+      1
+    );
+
+    assert.equal(
+      report
+        .githubEvidence
+        .candidatesWithGitHub,
+      1
+    );
+
+    assert.deepEqual(
+      report
+        .candidates[0]
+        ?.githubRepositories
+        .map(
+          (repository) =>
+            repository.url
+        ),
+      [
+        "https://github.com/ExampleOrg/WebsiteAgent"
+      ]
+    );
+
+    assert.equal(
+      report
+        .candidates[0]
+        ?.warnings
+        .includes(
+          "no-github-repository"
+        ),
+      false
+    );
+  }
+);
+
+test(
+  "continues after an official website scan fails",
+  async () => {
+    const report =
+      await generateBankrCandidateImportReport(
+        {
+          listProfiles:
+            async () => [
+              createSummary(
+                "profile-broken-site",
+                "broken-site-agent"
+              )
+            ],
+
+          getProfile:
+            async () =>
+              createDetail(
+                {
+                  id:
+                    "profile-broken-site",
+
+                  slug:
+                    "broken-site-agent",
+
+                  description:
+                    "No GitHub link.",
+
+                  website:
+                    "https://broken.example"
+                }
+              ),
+
+          discoverWebsite:
+            async () => {
+              throw Object.assign(
+                new Error(
+                  "Website timed out."
+                ),
+                {
+                  code:
+                    "WEBSITE_TIMEOUT",
+
+                  retryable:
+                    true
+                }
+              );
+            },
+
+          now:
+            () =>
+              "2026-06-30T00:00:00.000Z"
+        }
+      );
+
+    assert.equal(
+      report
+        .websiteDiscovery
+        .failed,
+      1
+    );
+
+    assert.equal(
+      report
+        .candidates
+        .length,
+      1
+    );
+
+    assert.equal(
+      report
+        .candidates[0]
+        ?.warnings
+        .includes(
+          "no-github-repository"
+        ),
+      true
+    );
+
+    assert.equal(
+      report
+        .websiteDiscovery
+        .results[0]
+        ?.error
+        ?.code,
+      "WEBSITE_TIMEOUT"
+    );
+  }
+);
+
+test(
+  "skips GitHub owner discovery when authenticated access is disabled",
+  async () => {
+    let ownerDiscoveryCalls =
+      0;
+
+    const report =
+      await generateBankrCandidateImportReport(
+        {
+          listProfiles:
+            async () => [
+              createSummary(
+                "profile-owner-only",
+                "owner-only-agent"
+              )
+            ],
+
+          getProfile:
+            async () =>
+              createDetail(
+                {
+                  id:
+                    "profile-owner-only",
+
+                  slug:
+                    "owner-only-agent",
+
+                  projectName:
+                    "Owner Only Agent",
+
+                  description:
+                    "No direct repository link.",
+
+                  website:
+                    "https://agent.example"
+                }
+              ),
+
+          discoverWebsite:
+            async (
+              websiteUrl
+            ) => ({
+              requestedUrl:
+                websiteUrl,
+
+              finalUrl:
+                websiteUrl,
+
+              redirects:
+                0,
+
+              bytesRead:
+                200,
+
+              repositories:
+                [],
+
+              ownerUrls: [
+                "https://github.com/example-agent"
+              ]
+            }),
+
+          discoverOwner:
+            async () => {
+              ownerDiscoveryCalls +=
+                1;
+
+              throw new Error(
+                "Owner discovery must not run."
+              );
+            },
+
+          ownerDiscoveryEnabled:
+            false,
+
+          now:
+            () =>
+              "2026-06-30T00:00:00.000Z"
+        }
+      );
+
+    assert.equal(
+      ownerDiscoveryCalls,
+      0
+    );
+
+    assert.equal(
+      report
+        .ownerDiscovery
+        .enabled,
+      false
+    );
+
+    assert.equal(
+      report
+        .ownerDiscovery
+        .skippedNoToken,
+      1
+    );
+
+    assert.equal(
+      report
+        .ownerDiscovery
+        .attempted,
+      0
+    );
+  }
+);

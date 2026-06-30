@@ -69,6 +69,70 @@ function createReport(
         []
     },
 
+    websiteDiscovery: {
+      skippedExistingGitHub:
+        0,
+
+      skippedNoWebsite:
+        0,
+
+      skippedSocialWebsite:
+        0,
+
+      attempted:
+        0,
+
+      found:
+        0,
+
+      ownerOnly:
+        0,
+
+      notFound:
+        0,
+
+      failed:
+        0,
+
+      repositoriesFound:
+        0,
+
+      ownerPagesFound:
+        0,
+
+      results:
+        []
+    },
+
+    ownerDiscovery: {
+      enabled:
+        true,
+
+      skippedNoToken:
+        0,
+
+      attempted:
+        0,
+
+      probable:
+        0,
+
+      review:
+        0,
+
+      notFound:
+        0,
+
+      failed:
+        0,
+
+      candidatesFound:
+        0,
+
+      results:
+        []
+    },
+
     githubEvidence: {
       candidatesWithGitHub:
         0,
@@ -175,7 +239,7 @@ test(
 
     assert.match(
       result.output,
-      /Failures: 1/
+      /Profile failures: 1/
     );
   }
 );

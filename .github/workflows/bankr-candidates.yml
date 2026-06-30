@@ -1,0 +1,212 @@
+name: Discover Bankr candidates
+
+on:
+  schedule:
+    - cron: "41 3 * * *"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bankr-candidate-discovery
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    name: Build Bankr candidate report
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate candidate report
+        shell: bash
+        run: |
+          set +e
+
+          npm run bankr:candidates
+          COMMAND_STATUS="$?"
+
+          set -e
+
+          echo "Candidate command exit code: ${COMMAND_STATUS}"
+
+          if [ ! -s data/candidates/bankr.json ]; then
+            echo "Candidate report was not generated."
+            exit 1
+          fi
+
+      - name: Validate candidate report
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs =
+            require("node:fs");
+
+          const report =
+            JSON.parse(
+              fs.readFileSync(
+                "data/candidates/bankr.json",
+                "utf8"
+              )
+            );
+
+          if (
+            report.schemaVersion !==
+              "1.0"
+          ) {
+            throw new Error(
+              "Unexpected report schema."
+            );
+          }
+
+          if (
+            !Number.isInteger(
+              report.profilesListed
+            ) ||
+            report.profilesListed <= 0
+          ) {
+            throw new Error(
+              "No Bankr profiles were listed."
+            );
+          }
+
+          if (
+            !Number.isInteger(
+              report.detailsLoaded
+            ) ||
+            report.detailsLoaded <= 0
+          ) {
+            throw new Error(
+              "No Bankr profile details were loaded."
+            );
+          }
+
+          if (
+            !Array.isArray(
+              report.candidates
+            ) ||
+            report.candidates.length !==
+              report.detailsLoaded
+          ) {
+            throw new Error(
+              "Candidate count does not match loaded details."
+            );
+          }
+
+          console.log(
+            JSON.stringify(
+              {
+                generatedAt:
+                  report.generatedAt,
+
+                profilesListed:
+                  report.profilesListed,
+
+                detailsLoaded:
+                  report.detailsLoaded,
+
+                profileFailures:
+                  report.failures?.length ??
+                  0,
+
+                websiteDiscovery: {
+                  skippedExistingGitHub:
+                    report.websiteDiscovery
+                      ?.skippedExistingGitHub,
+
+                  skippedNoWebsite:
+                    report.websiteDiscovery
+                      ?.skippedNoWebsite,
+
+                  skippedSocialWebsite:
+                    report.websiteDiscovery
+                      ?.skippedSocialWebsite,
+
+                  attempted:
+                    report.websiteDiscovery
+                      ?.attempted,
+
+                  found:
+                    report.websiteDiscovery
+                      ?.found,
+
+                  ownerOnly:
+                    report.websiteDiscovery
+                      ?.ownerOnly,
+
+                  notFound:
+                    report.websiteDiscovery
+                      ?.notFound,
+
+                  failed:
+                    report.websiteDiscovery
+                      ?.failed,
+
+                  repositoriesFound:
+                    report.websiteDiscovery
+                      ?.repositoriesFound
+                },
+
+                ownerDiscovery: {
+                  enabled:
+                    report.ownerDiscovery
+                      ?.enabled,
+
+                  attempted:
+                    report.ownerDiscovery
+                      ?.attempted,
+
+                  probable:
+                    report.ownerDiscovery
+                      ?.probable,
+
+                  review:
+                    report.ownerDiscovery
+                      ?.review,
+
+                  notFound:
+                    report.ownerDiscovery
+                      ?.notFound,
+
+                  failed:
+                    report.ownerDiscovery
+                      ?.failed,
+
+                  candidatesFound:
+                    report.ownerDiscovery
+                      ?.candidatesFound
+                },
+
+                githubEvidence:
+                  report.githubEvidence
+              },
+              null,
+              2
+            )
+          );
+          NODE
+
+      - name: Upload candidate report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bankr-candidates-${{ github.run_id }}
+          path: data/candidates/bankr.json
+          if-no-files-found: error
+          retention-days: 14
