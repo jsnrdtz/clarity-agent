@@ -1145,3 +1145,172 @@ test(
     }
   }
 );
+test(
+  "requests GoPlus security data one token at a time",
+  async () => {
+    const secondAddress =
+      `0x${"cd".repeat(20)}`;
+
+    const requestedAddresses:
+      string[] =
+      [];
+
+    const sleepCalls:
+      number[] =
+      [];
+
+    const fetcher:
+      typeof fetch =
+      async (
+        input
+      ) => {
+        const url =
+          new URL(
+            String(
+              input
+            )
+          );
+
+        const address =
+          url.searchParams.get(
+            "contract_addresses"
+          );
+
+        assert.ok(
+          address
+        );
+
+        requestedAddresses.push(
+          address
+        );
+
+        return new Response(
+          JSON.stringify(
+            {
+              code:
+                1,
+
+              message:
+                "OK",
+
+              result: {
+                [
+                  address.toLowerCase()
+                ]: {
+                  is_open_source:
+                    "1",
+
+                  is_honeypot:
+                    "0",
+
+                  holder_count:
+                    "100"
+                }
+              }
+            }
+          ),
+
+          {
+            status:
+              200,
+
+            headers: {
+              "Content-Type":
+                "application/json"
+            }
+          }
+        );
+      };
+
+    const tokens:
+      TokenReference[] = [
+        {
+          chainId:
+            "base",
+
+          address:
+            TOKEN_ADDRESS
+        },
+
+        {
+          chainId:
+            "base",
+
+          address:
+            secondAddress
+        }
+      ];
+
+    const snapshots =
+      await fetchGoPlusSecuritySnapshots(
+        tokens,
+        {
+          fetch:
+            fetcher,
+
+          requestIntervalMs:
+            7,
+
+          sleep:
+            async (
+              milliseconds
+            ) => {
+              sleepCalls.push(
+                milliseconds
+              );
+            }
+        }
+      );
+
+    assert.deepEqual(
+      requestedAddresses,
+      [
+        TOKEN_ADDRESS.toLowerCase(),
+        secondAddress.toLowerCase()
+      ]
+    );
+
+    assert.equal(
+      requestedAddresses.some(
+        (address) =>
+          address.includes(
+            ","
+          )
+      ),
+      false
+    );
+
+    assert.deepEqual(
+      sleepCalls,
+      [
+        7
+      ]
+    );
+
+    for (
+      const token
+      of tokens
+    ) {
+      const snapshot =
+        snapshots.get(
+          createTokenIdentity(
+            token
+          )
+        );
+
+      assert.ok(
+        snapshot
+      );
+
+      assert.equal(
+        snapshot.status,
+        "available"
+      );
+
+      assert.equal(
+        snapshot.holderCountReported,
+        100
+      );
+    }
+  }
+);

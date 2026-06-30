@@ -14,8 +14,8 @@ const DEFAULT_TIMEOUT_MS =
 const DEX_BATCH_SIZE =
   30;
 
-const GO_PLUS_BATCH_SIZE =
-  30;
+const DEFAULT_GO_PLUS_REQUEST_INTERVAL_MS =
+  2_100;
 
 const EVM_ADDRESS_PATTERN =
   /^0x[a-fA-F0-9]{40}$/u;
@@ -1849,10 +1849,14 @@ export async function fetchGoPlusSecuritySnapshots(
       TokenSecuritySnapshot
     >();
 
-  const groups =
+  const requests =
     new Map<
       string,
-      TokenReference[]
+      {
+        goPlusChainId: string;
+        address: string;
+        identities: string[];
+      }
     >();
 
   for (
@@ -1884,29 +1888,43 @@ export async function fetchGoPlusSecuritySnapshots(
       continue;
     }
 
-    const group =
-      groups.get(
-        goPlusChainId
-      ) ??
-      [];
+    const address =
+      normalizeAddress(
+        token.address
+      );
 
-    group.push(
-      {
-        chainId:
-          normalizeChainId(
-            token.chainId
-          ),
+    const requestKey =
+      `${goPlusChainId}:${address}`;
 
-        address:
-          normalizeAddress(
-            token.address
+    const existing =
+      requests.get(
+        requestKey
+      );
+
+    if (existing) {
+      if (
+        !existing.identities
+          .includes(
+            identity
           )
+      ) {
+        existing.identities.push(
+          identity
+        );
       }
-    );
 
-    groups.set(
-      goPlusChainId,
-      group
+      continue;
+    }
+
+    requests.set(
+      requestKey,
+      {
+        goPlusChainId,
+        address,
+        identities: [
+          identity
+        ]
+      }
     );
   }
 
@@ -1916,156 +1934,119 @@ export async function fetchGoPlusSecuritySnapshots(
       DEFAULT_GO_PLUS_URL
     );
 
+  const requestEntries =
+    [
+      ...requests.values()
+    ];
+
   for (
-    const [
-      goPlusChainId,
-      chainTokens
-    ]
-    of groups
+    let index = 0;
+    index < requestEntries.length;
+    index += 1
   ) {
-    const batches =
-      chunkValues(
-        chainTokens,
-        GO_PLUS_BATCH_SIZE
+    const request =
+      requestEntries[
+        index
+      ];
+
+    if (!request) {
+      continue;
+    }
+
+    try {
+      const url =
+        new URL(
+          `${baseUrl}/api/v1/token_security/${request.goPlusChainId}`
+        );
+
+      url.searchParams.set(
+        "contract_addresses",
+        request.address
       );
 
-    for (
-      let batchIndex = 0;
-      batchIndex < batches.length;
-      batchIndex += 1
-    ) {
-      const batch =
-        batches[
-          batchIndex
-        ] ??
-        [];
-
-      try {
-        const url =
-          new URL(
-            `${baseUrl}/api/v1/token_security/${goPlusChainId}`
-          );
-
-        url.searchParams.set(
-          "contract_addresses",
-
-          batch
-            .map(
-              (token) =>
-                token.address
-            )
-            .join(",")
+      const rawResponse =
+        await fetchJson(
+          "goplus",
+          url,
+          options
         );
 
-        const rawResponse =
-          await fetchJson(
-            "goplus",
-            url,
-            {
-              ...options,
+      const response =
+        GoPlusResponseSchema.parse(
+          rawResponse
+        );
 
-              requestIntervalMs:
-                options.requestIntervalMs ??
-                250
-            }
-          );
-
-        const response =
-          GoPlusResponseSchema.parse(
-            rawResponse
-          );
-
-        const records =
-          new Map<
-            string,
-            GoPlusToken
-          >(
-            Object
-              .entries(
-                response.result
-              )
-              .map(
-                (
-                  [
-                    address,
-                    value
-                  ]
-                ) => [
-                  normalizeAddress(
-                    address
-                  ),
-
-                  value
-                ]
-              )
-          );
-
-        for (
-          const token
-          of batch
-        ) {
-          const identity =
-            createTokenIdentity(
-              token
-            );
-
-          const record =
-            records.get(
+      const record =
+        Object
+          .entries(
+            response.result
+          )
+          .find(
+            (
+              [
+                address
+              ]
+            ) =>
               normalizeAddress(
-                token.address
-              )
+                address
+              ) ===
+              request.address
+          )
+          ?.[1];
+
+      const snapshot =
+        record
+          ? normalizeSecuritySnapshot(
+              record
+            )
+          : createEmptySecuritySnapshot(
+              "unavailable"
             );
 
-          snapshots.set(
-            identity,
-
-            record
-              ? normalizeSecuritySnapshot(
-                  record
-                )
-              : createEmptySecuritySnapshot(
-                  "unavailable"
-                )
-          );
-        }
-      } catch (error) {
-        const failure =
-          toFailure(
-            error,
-            "goplus"
-          );
-
-        for (
-          const token
-          of batch
-        ) {
-          snapshots.set(
-            createTokenIdentity(
-              token
-            ),
-
-            createEmptySecuritySnapshot(
-              "failed",
-              failure
-            )
-          );
-        }
-      }
-
-      if (
-        batchIndex <
-        batches.length - 1
+      for (
+        const identity
+        of request.identities
       ) {
-        await sleepBetweenRequests(
-          {
-            ...options,
-
-            requestIntervalMs:
-              options.requestIntervalMs ??
-              250
-          }
+        snapshots.set(
+          identity,
+          snapshot
         );
       }
+    } catch (error) {
+      const failure =
+        toFailure(
+          error,
+          "goplus"
+        );
+
+      for (
+        const identity
+        of request.identities
+      ) {
+        snapshots.set(
+          identity,
+
+          createEmptySecuritySnapshot(
+            "failed",
+            failure
+          )
+        );
+      }
+    }
+
+    if (
+      index <
+      requestEntries.length - 1
+    ) {
+      await sleepBetweenRequests(
+        {
+          ...options,
+
+          requestIntervalMs:
+            options.requestIntervalMs ??
+            DEFAULT_GO_PLUS_REQUEST_INTERVAL_MS
+        }
+      );
     }
   }
 
