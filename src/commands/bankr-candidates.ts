@@ -35,6 +35,20 @@ function formatTextReport(
           "None"
         ];
 
+  const registryRows =
+    report.automaticRegistry
+      ? [
+          "",
+          "AUTOMATIC AGENT REGISTRY",
+          `Agents: ${report.automaticRegistry.summary.total}`,
+          `GitHub verified: ${report.automaticRegistry.summary.githubVerified}`,
+          `GitHub probable: ${report.automaticRegistry.summary.githubProbable}`,
+          `GitHub unresolved: ${report.automaticRegistry.summary.githubUnresolved}`,
+          `Agent Score eligible: ${report.automaticRegistry.summary.agentScoreEligible}`,
+          `Token Score eligible: ${report.automaticRegistry.summary.tokenScoreEligible}`
+        ]
+      : [];
+
   return [
     "CLARITY BANKR CANDIDATES",
     "",
@@ -81,6 +95,7 @@ function formatTextReport(
     `Candidates without GitHub: ${report.githubEvidence.candidatesWithoutGitHub}`,
     `Classified repositories: ${report.githubEvidence.classifiedRepositories}`,
     `Unique repositories: ${report.githubEvidence.uniqueRepositories}`,
+    ...registryRows,
     "",
     "WARNINGS",
     ...warningRows,

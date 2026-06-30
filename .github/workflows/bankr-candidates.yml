@@ -111,6 +111,21 @@ jobs:
             );
           }
 
+          if (
+            !report.automaticRegistry ||
+            report.automaticRegistry.schemaVersion !==
+              "1.0" ||
+            report.automaticRegistry.summary?.total !==
+              report.candidates.length ||
+            !Array.isArray(
+              report.automaticRegistry.agents
+            )
+          ) {
+            throw new Error(
+              "Automatic registry is missing or inconsistent."
+            );
+          }
+
           console.log(
             JSON.stringify(
               {
@@ -195,6 +210,9 @@ jobs:
                       ?.candidatesFound
                 },
 
+                automaticRegistry:
+                  report.automaticRegistry.summary,
+
                 githubEvidence:
                   report.githubEvidence
               },
@@ -234,6 +252,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: bankr-candidates-${{ github.run_id }}
-          path: data/candidates/bankr.json
+          path: |
+            data/candidates/bankr.json
+            data/registry/bankr-agents.json
           if-no-files-found: error
           retention-days: 14

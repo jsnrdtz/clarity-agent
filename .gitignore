@@ -151,3 +151,6 @@ data/refresh.lock
 # Runtime Bankr candidate reports
 data/candidates/*.json
 data/candidates/*.tmp
+# Generated automatic agent registry
+data/registry/*.json
+data/registry/*.tmp

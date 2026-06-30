@@ -48,6 +48,15 @@ import {
   discoverGitHubOwner
 } from "./github-discovery.js";
 
+import {
+  buildAutomaticAgentRegistry,
+  saveAutomaticAgentRegistry
+} from "./automatic-agent-registry.js";
+
+import type {
+  AutomaticAgentRegistry
+} from "./automatic-agent-registry.js";
+
 import type {
   GitHubOwnerDiscovery
 } from "./github-discovery.js";
@@ -279,6 +288,9 @@ export type BankrCandidateImportReport = {
   globalGitHubDiscovery:
     BankrGlobalGitHubDiscoverySummary;
 
+  automaticRegistry?:
+    AutomaticAgentRegistry;
+
   githubEvidence:
     BankrCandidateGitHubEvidenceSummary;
 };
@@ -329,6 +341,7 @@ export type BankrCandidateImportDependencies = {
 export type RunBankrCandidateImportOptions =
   BankrCandidateImportDependencies & {
     outputPath?: string;
+    registryOutputPath?: string;
   };
 
 const WARNING_ORDER:
@@ -1537,6 +1550,20 @@ export async function generateBankrCandidateImportReport(
             )
         };
 
+  const automaticRegistry =
+    buildAutomaticAgentRegistry(
+      {
+        generatedAt,
+
+        candidates:
+          candidateReport.candidates,
+
+        ownerDiscovery,
+
+        globalGitHubDiscovery
+      }
+    );
+
   return {
     schemaVersion:
       "1.0",
@@ -1570,6 +1597,8 @@ export async function generateBankrCandidateImportReport(
     ownerDiscovery,
 
     globalGitHubDiscovery,
+
+    automaticRegistry,
 
     githubEvidence:
       createGitHubEvidenceSummary(
@@ -1642,6 +1671,23 @@ export async function runBankrCandidateImport(
       report,
       options.outputPath
     );
+
+  if (
+    report.automaticRegistry
+  ) {
+    const registryOutputPath =
+      options.registryOutputPath ??
+      (
+        options.outputPath
+          ? `${dirname(options.outputPath)}/bankr-agents.json`
+          : undefined
+      );
+
+    await saveAutomaticAgentRegistry(
+      report.automaticRegistry,
+      registryOutputPath
+    );
+  }
 
   return {
     report,
