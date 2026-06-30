@@ -1166,3 +1166,104 @@ test(
     );
   }
 );
+
+
+test(
+  "serves the public Clarity homepage",
+  async () => {
+    const response =
+      await fetch(
+        `${baseUrl}/`
+      );
+
+    const body =
+      await response.text();
+
+    assert.equal(
+      response.status,
+      200
+    );
+
+    assert.match(
+      response.headers.get(
+        "content-type"
+      ) ?? "",
+      /text\/html/
+    );
+
+    assert.match(
+      body,
+      /Intelligence for the/
+    );
+
+    assert.match(
+      body,
+      /AI agent economy/
+    );
+
+    assert.match(
+      body,
+      /id="rankingList"/
+    );
+  }
+);
+
+test(
+  "serves public site assets",
+  async () => {
+    const [
+      stylesheetResponse,
+      scriptResponse
+    ] = await Promise.all([
+      fetch(
+        `${baseUrl}/styles.css`
+      ),
+
+      fetch(
+        `${baseUrl}/app.js`
+      )
+    ]);
+
+    const [
+      stylesheet,
+      script
+    ] = await Promise.all([
+      stylesheetResponse.text(),
+      scriptResponse.text()
+    ]);
+
+    assert.equal(
+      stylesheetResponse.status,
+      200
+    );
+
+    assert.match(
+      stylesheetResponse.headers.get(
+        "content-type"
+      ) ?? "",
+      /text\/css/
+    );
+
+    assert.match(
+      stylesheet,
+      /\.agent-card/
+    );
+
+    assert.equal(
+      scriptResponse.status,
+      200
+    );
+
+    assert.match(
+      scriptResponse.headers.get(
+        "content-type"
+      ) ?? "",
+      /javascript/
+    );
+
+    assert.match(
+      script,
+      /api\/v1\/ranking/
+    );
+  }
+);

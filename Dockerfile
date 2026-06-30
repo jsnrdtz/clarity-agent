@@ -25,6 +25,7 @@ RUN npm ci --omit=dev \
   && npm cache clean --force
 
 COPY --from=build /app/dist ./dist
+COPY public ./public
 
 RUN mkdir -p \
   /app/data/snapshots \

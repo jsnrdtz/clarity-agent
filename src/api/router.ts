@@ -3,6 +3,11 @@ import {
 } from "../services/agent-search.js";
 
 import {
+  isPublicSitePath,
+  servePublicSite
+} from "../services/public-site.js";
+
+import {
   openApiDocument
 } from "./openapi.js";
 
@@ -170,6 +175,7 @@ function isKnownGetPath(
   pathname: string
 ): boolean {
   return (
+    isPublicSitePath(pathname) ||
     pathname === "/openapi.json" ||
     pathname === "/health" ||
     pathname === "/api/v1/agents" ||
@@ -297,6 +303,15 @@ async function routeGetRequest(
   searchParams: URLSearchParams,
   response: ServerResponse
 ): Promise<void> {
+  if (
+    await servePublicSite(
+      pathname,
+      response
+    )
+  ) {
+    return;
+  }
+
   if (pathname === "/openapi.json") {
     sendJson(
       response,
