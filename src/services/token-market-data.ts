@@ -74,6 +74,24 @@ export type TokenDexSnapshot = {
     null;
 };
 
+export type TokenTopHolder = {
+  address: string;
+  balance: string | null;
+  percentPct: number | null;
+
+  isContract: boolean | null;
+  isLocked: boolean | null;
+
+  tag: string | null;
+
+  excludedFromCirculatingConcentration:
+    boolean;
+
+  exclusionReason:
+    string |
+    null;
+};
+
 export type TokenSecuritySnapshot = {
   provider: "goplus";
   status: TokenDataStatus;
@@ -102,6 +120,17 @@ export type TokenSecuritySnapshot = {
   creatorAddress: string | null;
   ownerAddress: string | null;
 
+  totalSupply?:
+    string |
+    null;
+
+  creatorSupplyPct?:
+    number |
+    null;
+
+  topHolders?:
+    TokenTopHolder[];
+
   risks: string[];
 
   error:
@@ -117,6 +146,21 @@ export type TokenHolderSnapshot = {
     | "failed";
 
   holderCount: number | null;
+
+  sampledHolders?:
+    number;
+
+  rawTop10SupplyPct?:
+    number |
+    null;
+
+  excludedKnownSupplyPct?:
+    number |
+    null;
+
+  creatorSupplyPct?:
+    number |
+    null;
 
   top10SupplyPct: number | null;
   top20SupplyPct: number | null;
@@ -349,6 +393,30 @@ const GoPlusScalarSchema =
     ]
   );
 
+const GoPlusHolderSchema =
+  z.object(
+    {
+      address:
+        z.string().min(1),
+
+      balance:
+        GoPlusScalarSchema.optional(),
+
+      percent:
+        GoPlusScalarSchema.optional(),
+
+      is_contract:
+        GoPlusScalarSchema.optional(),
+
+      is_locked:
+        GoPlusScalarSchema.optional(),
+
+      tag:
+        GoPlusScalarSchema.optional()
+    }
+  )
+    .passthrough();
+
 const GoPlusTokenSchema =
   z.object(
     {
@@ -407,7 +475,19 @@ const GoPlusTokenSchema =
         GoPlusScalarSchema.optional(),
 
       owner_address:
-        GoPlusScalarSchema.optional()
+        GoPlusScalarSchema.optional(),
+
+      total_supply:
+        GoPlusScalarSchema.optional(),
+
+      creator_percent:
+        GoPlusScalarSchema.optional(),
+
+      holders:
+        z.array(
+          GoPlusHolderSchema
+        )
+          .optional()
     }
   )
     .passthrough();
@@ -439,6 +519,11 @@ const GoPlusResponseSchema =
     }
   )
     .passthrough();
+
+type GoPlusHolder =
+  z.infer<
+    typeof GoPlusHolderSchema
+  >;
 
 type GoPlusToken =
   z.infer<
@@ -894,6 +979,156 @@ function toOptionalAddress(
     : null;
 }
 
+function toOptionalString(
+  value: unknown
+): string | null {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return null;
+  }
+
+  const normalized =
+    String(
+      value
+    ).trim();
+
+  return normalized
+    ? normalized
+    : null;
+}
+
+function getHolderExclusionReason(
+  address: string,
+  isLocked: boolean | null,
+  tag: string | null
+): string | null {
+  if (
+    isLocked === true
+  ) {
+    return (
+      "Holder is explicitly marked as locked."
+    );
+  }
+
+  if (
+    address ===
+      "0x0000000000000000000000000000000000000000" ||
+    address ===
+      "0x000000000000000000000000000000000000dead"
+  ) {
+    return (
+      "Known burn or null address."
+    );
+  }
+
+  const normalizedTag =
+    (
+      tag ??
+      ""
+    ).toLowerCase();
+
+  const excludedMarkers = [
+    "burn",
+    "dead",
+    "black hole",
+    "locked",
+    "locker",
+    "vesting",
+    "liquidity pool",
+    "lp token"
+  ];
+
+  const matchedMarker =
+    excludedMarkers.find(
+      (candidate) =>
+        normalizedTag.includes(
+          candidate
+        )
+    );
+
+  if (!matchedMarker) {
+    return null;
+  }
+
+  return (
+    `Holder tag indicates ${matchedMarker}.`
+  );
+}
+
+function normalizeTopHolder(
+  holder:
+    GoPlusHolder
+): TokenTopHolder | null {
+  const address =
+    toOptionalAddress(
+      holder.address
+    );
+
+  if (!address) {
+    return null;
+  }
+
+  const rawPercent =
+    toTaxPercentage(
+      holder.percent
+    );
+
+  const percentPct =
+    rawPercent === null
+      ? null
+      : Math.min(
+          Math.max(
+            rawPercent,
+            0
+          ),
+          100
+        );
+
+  const isLocked =
+    toBooleanFlag(
+      holder.is_locked
+    );
+
+  const tag =
+    toOptionalString(
+      holder.tag
+    );
+
+  const exclusionReason =
+    getHolderExclusionReason(
+      address,
+      isLocked,
+      tag
+    );
+
+  return {
+    address,
+
+    balance:
+      toOptionalString(
+        holder.balance
+      ),
+
+    percentPct,
+
+    isContract:
+      toBooleanFlag(
+        holder.is_contract
+      ),
+
+    isLocked,
+    tag,
+
+    excludedFromCirculatingConcentration:
+      exclusionReason !==
+      null,
+
+    exclusionReason
+  };
+}
+
 function createEmptyDexSnapshot(
   status:
     TokenDexSnapshot["status"],
@@ -1017,6 +1252,15 @@ function createEmptySecuritySnapshot(
 
     ownerAddress:
       null,
+
+    totalSupply:
+      null,
+
+    creatorSupplyPct:
+      null,
+
+    topHolders:
+      [],
 
     risks:
       [],
@@ -1792,6 +2036,21 @@ function normalizeSecuritySnapshot(
       token.sell_tax
     );
 
+  const topHolders =
+    (
+      token.holders ??
+      []
+    )
+      .map(
+        normalizeTopHolder
+      )
+      .filter(
+        (
+          holder
+        ): holder is TokenTopHolder =>
+          holder !== null
+      );
+
   return {
     provider:
       "goplus",
@@ -1818,6 +2077,18 @@ function normalizeSecuritySnapshot(
       toOptionalAddress(
         token.owner_address
       ),
+
+    totalSupply:
+      toOptionalString(
+        token.total_supply
+      ),
+
+    creatorSupplyPct:
+      toTaxPercentage(
+        token.creator_percent
+      ),
+
+    topHolders,
 
     risks:
       buildSecurityRisks(

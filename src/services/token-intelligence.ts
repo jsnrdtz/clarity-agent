@@ -30,7 +30,6 @@ import type {
 
 import {
   createTokenIdentity,
-  createUnavailableHolderSnapshots,
   fetchDexScreenerSnapshots,
   fetchGoPlusSecuritySnapshots
 } from "./token-market-data.js";
@@ -1169,69 +1168,193 @@ function calculateDistribution(
     );
   }
 
-  const holderCount =
-    holders.holderCount ??
-    0;
+  const metrics:
+    Array<{
+      score: number;
+      weight: number;
+      evidence: string;
+    }> = [];
 
-  const holderScore =
-    logarithmicScore(
-      holderCount,
-      5_000
+  if (
+    holders.holderCount !==
+      null
+  ) {
+    metrics.push(
+      {
+        score:
+          logarithmicScore(
+            holders.holderCount,
+            5_000
+          ),
+
+        weight:
+          20,
+
+        evidence:
+          `${holders.holderCount} holders reported.`
+      }
+    );
+  }
+
+  if (
+    holders.top10SupplyPct !==
+      null
+  ) {
+    metrics.push(
+      {
+        score:
+          roundScore(
+            100 -
+            holders.top10SupplyPct
+          ),
+
+        weight:
+          45,
+
+        evidence:
+          `Returned non-excluded top holders control ${holders.top10SupplyPct.toFixed(2)}%.`
+      }
+    );
+  }
+
+  if (
+    holders.top20SupplyPct !==
+      null
+  ) {
+    metrics.push(
+      {
+        score:
+          roundScore(
+            100 -
+            holders.top20SupplyPct
+          ),
+
+        weight:
+          10,
+
+        evidence:
+          `Top-20 holders control ${holders.top20SupplyPct.toFixed(2)}%.`
+      }
+    );
+  }
+
+  if (
+    holders.creatorSupplyPct !==
+      null &&
+    holders.creatorSupplyPct !==
+      undefined
+  ) {
+    metrics.push(
+      {
+        score:
+          roundScore(
+            100 -
+            holders.creatorSupplyPct *
+              2
+          ),
+
+        weight:
+          10,
+
+        evidence:
+          `Creator address controls ${holders.creatorSupplyPct.toFixed(2)}%.`
+      }
+    );
+  }
+
+  if (
+    holders.relatedWalletSupplyPct !==
+      null
+  ) {
+    metrics.push(
+      {
+        score:
+          roundScore(
+            100 -
+            holders.relatedWalletSupplyPct *
+              2
+          ),
+
+        weight:
+          7.5,
+
+        evidence:
+          `Known related wallets control ${holders.relatedWalletSupplyPct.toFixed(2)}%.`
+      }
+    );
+  }
+
+  if (
+    holders.deployerClusterSupplyPct !==
+      null
+  ) {
+    metrics.push(
+      {
+        score:
+          roundScore(
+            100 -
+            holders.deployerClusterSupplyPct *
+              2
+          ),
+
+        weight:
+          7.5,
+
+        evidence:
+          `Known deployer cluster controls ${holders.deployerClusterSupplyPct.toFixed(2)}%.`
+      }
+    );
+  }
+
+  const availableWeight =
+    metrics.reduce(
+      (
+        total,
+        metric
+      ) =>
+        total +
+        metric.weight,
+
+      0
     );
 
-  const top10Score =
-    holders.top10SupplyPct ===
-      null
-      ? 0
-      : roundScore(
-          100 -
-          holders.top10SupplyPct
-        );
-
-  const top20Score =
-    holders.top20SupplyPct ===
-      null
-      ? 0
-      : roundScore(
-          100 -
-          holders.top20SupplyPct
-        );
-
-  const relatedScore =
-    holders.relatedWalletSupplyPct ===
-      null
-      ? 50
-      : roundScore(
-          100 -
-          holders.relatedWalletSupplyPct *
-            2
-        );
+  if (
+    availableWeight <= 0
+  ) {
+    return createUnavailableCategory(
+      "distribution",
+      [
+        ...holders.evidence,
+        "No scorable holder distribution fields were returned."
+      ]
+    );
+  }
 
   const score =
-    holderScore *
-      0.25 +
-    top10Score *
-      0.35 +
-    top20Score *
-      0.25 +
-    relatedScore *
-      0.15;
+    metrics.reduce(
+      (
+        total,
+        metric
+      ) =>
+        total +
+        metric.score *
+        metric.weight,
+
+      0
+    ) /
+    availableWeight;
 
   return createAvailableCategory(
     "distribution",
     score,
     [
-      `${holderCount} holders detected.`,
-      holders.top10SupplyPct ===
-        null
-        ? "Top-10 concentration is unavailable."
-        : `Top-10 holders control ${holders.top10SupplyPct.toFixed(2)}%.`,
-      holders.top20SupplyPct ===
-        null
-        ? "Top-20 concentration is unavailable."
-        : `Top-20 holders control ${holders.top20SupplyPct.toFixed(2)}%.`,
+      ...metrics.map(
+        (metric) =>
+          metric.evidence
+      ),
       ...holders.evidence
-    ]
+    ],
+    availableWeight
   );
 }
 
@@ -1373,7 +1496,11 @@ function calculateScoreBreakdown(
         category
       ) =>
         total +
-        category.weight,
+        category.weight *
+        (
+          category.dataCoverage /
+          100
+        ),
 
       0
     );
@@ -1389,7 +1516,11 @@ function calculateScoreBreakdown(
           category.score ??
           0
         ) *
-        category.weight,
+        category.weight *
+        (
+          category.dataCoverage /
+          100
+        ),
 
       0
     );
@@ -1627,6 +1758,233 @@ function createMissingHolderSnapshot(
   };
 }
 
+function createGoPlusHolderSnapshots(
+  tokens:
+    TokenReference[],
+
+  securitySnapshots:
+    Map<
+      string,
+      TokenSecuritySnapshot
+    >
+): Map<
+  string,
+  TokenHolderSnapshot
+> {
+  const snapshots =
+    new Map<
+      string,
+      TokenHolderSnapshot
+    >();
+
+  for (
+    const token
+    of tokens
+  ) {
+    const identity =
+      createTokenIdentity(
+        token
+      );
+
+    const security =
+      securitySnapshots.get(
+        identity
+      );
+
+    const topHolders =
+      security
+        ?.topHolders ??
+      [];
+
+    const holdersWithPercent =
+      topHolders.filter(
+        (
+          holder
+        ) =>
+          holder.percentPct !==
+          null
+      );
+
+    if (
+      security?.status !==
+        "available" ||
+      holdersWithPercent.length ===
+        0
+    ) {
+      snapshots.set(
+        identity,
+        {
+          provider:
+            "goplus",
+
+          status:
+            "unavailable",
+
+          holderCount:
+            security
+              ?.holderCountReported ??
+            null,
+
+          sampledHolders:
+            topHolders.length,
+
+          rawTop10SupplyPct:
+            null,
+
+          excludedKnownSupplyPct:
+            null,
+
+          creatorSupplyPct:
+            security
+              ?.creatorSupplyPct ??
+            null,
+
+          top10SupplyPct:
+            null,
+
+          top20SupplyPct:
+            null,
+
+          relatedWalletSupplyPct:
+            null,
+
+          deployerClusterSupplyPct:
+            null,
+
+          evidence: [
+            "GoPlus did not return a usable top-holder percentage sample."
+          ],
+
+          error:
+            null
+        }
+      );
+
+      continue;
+    }
+
+    const rawTop10SupplyPct =
+      clamp(
+        holdersWithPercent.reduce(
+          (
+            total,
+            holder
+          ) =>
+            total +
+            (
+              holder.percentPct ??
+              0
+            ),
+
+          0
+        )
+      );
+
+    const excludedKnownSupplyPct =
+      clamp(
+        holdersWithPercent
+          .filter(
+            (holder) =>
+              holder
+                .excludedFromCirculatingConcentration
+          )
+          .reduce(
+            (
+              total,
+              holder
+            ) =>
+              total +
+              (
+                holder.percentPct ??
+                0
+              ),
+
+            0
+          )
+      );
+
+    const top10SupplyPct =
+      clamp(
+        holdersWithPercent
+          .filter(
+            (holder) =>
+              !holder
+                .excludedFromCirculatingConcentration
+          )
+          .reduce(
+            (
+              total,
+              holder
+            ) =>
+              total +
+              (
+                holder.percentPct ??
+                0
+              ),
+
+            0
+          )
+      );
+
+    const excludedCount =
+      holdersWithPercent.filter(
+        (holder) =>
+          holder
+            .excludedFromCirculatingConcentration
+      ).length;
+
+    snapshots.set(
+      identity,
+      {
+        provider:
+          "goplus",
+
+        status:
+          "available",
+
+        holderCount:
+          security
+            .holderCountReported,
+
+        sampledHolders:
+          holdersWithPercent.length,
+
+        rawTop10SupplyPct,
+
+        excludedKnownSupplyPct,
+
+        creatorSupplyPct:
+          security
+            .creatorSupplyPct ??
+          null,
+
+        top10SupplyPct,
+
+        top20SupplyPct:
+          null,
+
+        relatedWalletSupplyPct:
+          null,
+
+        deployerClusterSupplyPct:
+          null,
+
+        evidence: [
+          `GoPlus returned ${holdersWithPercent.length} top-holder percentage records.`,
+          `${excludedCount} explicitly burn, locked, vesting or LP-tagged records were excluded.`,
+          `${excludedKnownSupplyPct.toFixed(2)}% of supply was excluded from circulating concentration.`,
+          "This is a sampled top-holder concentration, not complete wallet-cluster analysis."
+        ],
+
+        error:
+          null
+      }
+    );
+  }
+
+  return snapshots;
+}
+
 export async function generateTokenIntelligenceReport(
   registry:
     AutomaticAgentRegistry,
@@ -1665,14 +2023,9 @@ export async function generateTokenIntelligenceReport(
     dependencies.fetchSecurity ??
     fetchGoPlusSecuritySnapshots;
 
-  const fetchHolders =
-    dependencies.fetchHolders ??
-    createUnavailableHolderSnapshots;
-
   const [
     dexSnapshots,
-    securitySnapshots,
-    holderSnapshots
+    securitySnapshots
   ] = await Promise.all(
     [
       fetchDex(
@@ -1681,13 +2034,20 @@ export async function generateTokenIntelligenceReport(
 
       fetchSecurity(
         tokens
-      ),
-
-      fetchHolders(
-        tokens
       )
     ]
   );
+
+  const holderSnapshots =
+    dependencies.fetchHolders
+      ? await dependencies
+          .fetchHolders(
+            tokens
+          )
+      : createGoPlusHolderSnapshots(
+          tokens,
+          securitySnapshots
+        );
 
   const entries:
     TokenIntelligenceEntry[] =
