@@ -48,6 +48,9 @@ export type TokenDexSnapshot = {
 
   pools: number;
 
+  poolAddresses?:
+    string[];
+
   primaryPair: {
     chainId: string;
     dexId: string | null;
@@ -155,6 +158,10 @@ export type TokenHolderSnapshot = {
     null;
 
   excludedKnownSupplyPct?:
+    number |
+    null;
+
+  dexPoolSupplyPct?:
     number |
     null;
 
@@ -1146,6 +1153,9 @@ function createEmptyDexSnapshot(
     pools:
       0,
 
+    poolAddresses:
+      [],
+
     primaryPair:
       null,
 
@@ -1459,6 +1469,23 @@ function aggregateDexPairs(
 
     pools:
       values.length,
+
+    poolAddresses:
+      values
+        .map(
+          (pair) =>
+            pair.pairAddress
+              ?.trim()
+              .toLowerCase() ??
+            null
+        )
+        .filter(
+          (
+            address
+          ): address is string =>
+            address !==
+            null
+        ),
 
     primaryPair: {
       chainId:

@@ -354,6 +354,14 @@ test(
         ?.pairAddress,
       "0xpairone"
     );
+
+    assert.deepEqual(
+      snapshot.poolAddresses,
+      [
+        "0xpairone",
+        "0xpairtwo"
+      ]
+    );
   }
 );
 
@@ -2021,6 +2029,292 @@ test(
       entry.scores
         .provisionalOverall,
       null
+    );
+  }
+);
+test(
+  "excludes detected DEX pool addresses from circulating concentration",
+  async () => {
+    const token:
+      TokenReference = {
+        chainId:
+          "base",
+
+        address:
+          TOKEN_ADDRESS
+      };
+
+    const identity =
+      createTokenIdentity(
+        token
+      );
+
+    const liquidityPoolAddress =
+      `0x${"90".repeat(20)}`;
+
+    const whaleAddress =
+      `0x${"91".repeat(20)}`;
+
+    const dex:
+      TokenDexSnapshot = {
+      provider:
+        "dexscreener",
+
+      status:
+        "available",
+
+      pools:
+        1,
+
+      poolAddresses: [
+        liquidityPoolAddress
+      ],
+
+      primaryPair: {
+        chainId:
+          "base",
+
+        dexId:
+          "example-dex",
+
+        pairAddress:
+          liquidityPoolAddress,
+
+        url:
+          null
+      },
+
+      totalLiquidityUsd:
+        100_000,
+
+      volume24hUsd:
+        10_000,
+
+      buys24h:
+        20,
+
+      sells24h:
+        20,
+
+      priceUsd:
+        1,
+
+      priceChange24hPct:
+        0,
+
+      marketCapUsd:
+        1_000_000,
+
+      fdvUsd:
+        1_000_000,
+
+      pairCreatedAt:
+        "2026-06-01T00:00:00.000Z",
+
+      error:
+        null
+    };
+
+    const security:
+      TokenSecuritySnapshot = {
+      provider:
+        "goplus",
+
+      status:
+        "available",
+
+      flags: {
+        isOpenSource:
+          true,
+
+        isProxy:
+          false,
+
+        isHoneypot:
+          false,
+
+        cannotBuy:
+          false,
+
+        cannotSellAll:
+          false,
+
+        isMintable:
+          false,
+
+        hiddenOwner:
+          false,
+
+        ownerChangeBalance:
+          false,
+
+        selfDestruct:
+          false,
+
+        externalCall:
+          false,
+
+        transferPausable:
+          false,
+
+        isBlacklisted:
+          false,
+
+        slippageModifiable:
+          false,
+
+        antiWhaleModifiable:
+          false
+      },
+
+      buyTaxPct:
+        0,
+
+      sellTaxPct:
+        0,
+
+      holderCountReported:
+        1_000,
+
+      creatorAddress:
+        null,
+
+      ownerAddress:
+        null,
+
+      totalSupply:
+        "1000000",
+
+      creatorSupplyPct:
+        0,
+
+      topHolders: [
+        {
+          address:
+            liquidityPoolAddress,
+
+          balance:
+            "700000",
+
+          percentPct:
+            70,
+
+          isContract:
+            true,
+
+          isLocked:
+            false,
+
+          tag:
+            null,
+
+          excludedFromCirculatingConcentration:
+            false,
+
+          exclusionReason:
+            null
+        },
+
+        {
+          address:
+            whaleAddress,
+
+          balance:
+            "200000",
+
+          percentPct:
+            20,
+
+          isContract:
+            false,
+
+          isLocked:
+            false,
+
+          tag:
+            null,
+
+          excludedFromCirculatingConcentration:
+            false,
+
+          exclusionReason:
+            null
+        }
+      ],
+
+      risks:
+        [],
+
+      error:
+        null
+    };
+
+    const report =
+      await generateTokenIntelligenceReport(
+        createRegistry(),
+        {
+          fetchDex:
+            async () =>
+              new Map(
+                [
+                  [
+                    identity,
+                    dex
+                  ]
+                ]
+              ),
+
+          fetchSecurity:
+            async () =>
+              new Map(
+                [
+                  [
+                    identity,
+                    security
+                  ]
+                ]
+              ),
+
+          now:
+            () =>
+              "2026-06-30T00:00:00.000Z"
+        }
+      );
+
+    const entry =
+      report.tokens[0];
+
+    assert.ok(entry);
+
+    assert.equal(
+      entry.holders
+        .rawTop10SupplyPct,
+      90
+    );
+
+    assert.equal(
+      entry.holders
+        .dexPoolSupplyPct,
+      70
+    );
+
+    assert.equal(
+      entry.holders
+        .excludedKnownSupplyPct,
+      70
+    );
+
+    assert.equal(
+      entry.holders
+        .top10SupplyPct,
+      20
+    );
+
+    assert.match(
+      entry.holders
+        .evidence
+        .join(" "),
+      /matched detected DEX pair addresses/u
     );
   }
 );

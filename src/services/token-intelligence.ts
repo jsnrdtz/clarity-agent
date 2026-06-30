@@ -1592,6 +1592,9 @@ function createMissingDexSnapshot(
     pools:
       0,
 
+    poolAddresses:
+      [],
+
     primaryPair:
       null,
 
@@ -1758,6 +1761,14 @@ function createMissingHolderSnapshot(
   };
 }
 
+function normalizeHolderAddress(
+  value: string
+): string {
+  return value
+    .trim()
+    .toLowerCase();
+}
+
 function createGoPlusHolderSnapshots(
   tokens:
     TokenReference[],
@@ -1766,6 +1777,12 @@ function createGoPlusHolderSnapshots(
     Map<
       string,
       TokenSecuritySnapshot
+    >,
+
+  dexSnapshots:
+    Map<
+      string,
+      TokenDexSnapshot
     >
 ): Map<
   string,
@@ -1789,6 +1806,22 @@ function createGoPlusHolderSnapshots(
     const security =
       securitySnapshots.get(
         identity
+      );
+
+    const dex =
+      dexSnapshots.get(
+        identity
+      );
+
+    const knownDexPoolAddresses =
+      new Set(
+        (
+          dex
+            ?.poolAddresses ??
+          []
+        ).map(
+          normalizeHolderAddress
+        )
       );
 
     const topHolders =
@@ -1834,6 +1867,9 @@ function createGoPlusHolderSnapshots(
           excludedKnownSupplyPct:
             null,
 
+          dexPoolSupplyPct:
+            null,
+
           creatorSupplyPct:
             security
               ?.creatorSupplyPct ??
@@ -1863,6 +1899,28 @@ function createGoPlusHolderSnapshots(
       continue;
     }
 
+    const isKnownDexPool =
+      (
+        holder:
+          typeof holdersWithPercent[number]
+      ): boolean =>
+        knownDexPoolAddresses.has(
+          normalizeHolderAddress(
+            holder.address
+          )
+        );
+
+    const isExcluded =
+      (
+        holder:
+          typeof holdersWithPercent[number]
+      ): boolean =>
+        holder
+          .excludedFromCirculatingConcentration ||
+        isKnownDexPool(
+          holder
+        );
+
     const rawTop10SupplyPct =
       clamp(
         holdersWithPercent.reduce(
@@ -1880,13 +1938,32 @@ function createGoPlusHolderSnapshots(
         )
       );
 
+    const dexPoolSupplyPct =
+      clamp(
+        holdersWithPercent
+          .filter(
+            isKnownDexPool
+          )
+          .reduce(
+            (
+              total,
+              holder
+            ) =>
+              total +
+              (
+                holder.percentPct ??
+                  0
+              ),
+
+            0
+          )
+      );
+
     const excludedKnownSupplyPct =
       clamp(
         holdersWithPercent
           .filter(
-            (holder) =>
-              holder
-                .excludedFromCirculatingConcentration
+            isExcluded
           )
           .reduce(
             (
@@ -1908,8 +1985,9 @@ function createGoPlusHolderSnapshots(
         holdersWithPercent
           .filter(
             (holder) =>
-              !holder
-                .excludedFromCirculatingConcentration
+              !isExcluded(
+                holder
+              )
           )
           .reduce(
             (
@@ -1928,9 +2006,12 @@ function createGoPlusHolderSnapshots(
 
     const excludedCount =
       holdersWithPercent.filter(
-        (holder) =>
-          holder
-            .excludedFromCirculatingConcentration
+        isExcluded
+      ).length;
+
+    const dexPoolCount =
+      holdersWithPercent.filter(
+        isKnownDexPool
       ).length;
 
     snapshots.set(
@@ -1953,6 +2034,8 @@ function createGoPlusHolderSnapshots(
 
         excludedKnownSupplyPct,
 
+        dexPoolSupplyPct,
+
         creatorSupplyPct:
           security
             .creatorSupplyPct ??
@@ -1971,9 +2054,11 @@ function createGoPlusHolderSnapshots(
 
         evidence: [
           `GoPlus returned ${holdersWithPercent.length} top-holder percentage records.`,
-          `${excludedCount} explicitly burn, locked, vesting or LP-tagged records were excluded.`,
+          `${excludedCount} known non-circulating or liquidity records were excluded.`,
+          `${dexPoolCount} holder records matched detected DEX pair addresses.`,
+          `${dexPoolSupplyPct.toFixed(2)}% of supply was identified in detected DEX pools.`,
           `${excludedKnownSupplyPct.toFixed(2)}% of supply was excluded from circulating concentration.`,
-          "This is a sampled top-holder concentration, not complete wallet-cluster analysis."
+          "This is sampled top-holder concentration, not complete wallet-cluster analysis."
         ],
 
         error:
@@ -2046,7 +2131,8 @@ export async function generateTokenIntelligenceReport(
           )
       : createGoPlusHolderSnapshots(
           tokens,
-          securitySnapshots
+          securitySnapshots,
+          dexSnapshots
         );
 
   const entries:
