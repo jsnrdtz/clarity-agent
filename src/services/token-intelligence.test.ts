@@ -2318,3 +2318,290 @@ test(
     );
   }
 );
+test(
+  "excludes the verified Base Uniswap v4 PoolManager from concentration",
+  async () => {
+    const token:
+      TokenReference = {
+        chainId:
+          "base",
+
+        address:
+          TOKEN_ADDRESS
+      };
+
+    const identity =
+      createTokenIdentity(
+        token
+      );
+
+    const poolManagerAddress =
+      "0x498581ff718922c3f8e6a244956af099b2652b2b";
+
+    const whaleAddress =
+      `0x${"92".repeat(20)}`;
+
+    const dex:
+      TokenDexSnapshot = {
+      provider:
+        "dexscreener",
+
+      status:
+        "no-pairs",
+
+      pools:
+        0,
+
+      poolAddresses:
+        [],
+
+      primaryPair:
+        null,
+
+      totalLiquidityUsd:
+        null,
+
+      volume24hUsd:
+        null,
+
+      buys24h:
+        null,
+
+      sells24h:
+        null,
+
+      priceUsd:
+        null,
+
+      priceChange24hPct:
+        null,
+
+      marketCapUsd:
+        null,
+
+      fdvUsd:
+        null,
+
+      pairCreatedAt:
+        null,
+
+      error:
+        null
+    };
+
+    const security:
+      TokenSecuritySnapshot = {
+      provider:
+        "goplus",
+
+      status:
+        "available",
+
+      flags: {
+        isOpenSource:
+          true,
+
+        isProxy:
+          false,
+
+        isHoneypot:
+          false,
+
+        cannotBuy:
+          false,
+
+        cannotSellAll:
+          false,
+
+        isMintable:
+          false,
+
+        hiddenOwner:
+          false,
+
+        ownerChangeBalance:
+          false,
+
+        selfDestruct:
+          false,
+
+        externalCall:
+          false,
+
+        transferPausable:
+          false,
+
+        isBlacklisted:
+          false,
+
+        slippageModifiable:
+          false,
+
+        antiWhaleModifiable:
+          false
+      },
+
+      buyTaxPct:
+        0,
+
+      sellTaxPct:
+        0,
+
+      holderCountReported:
+        1_000,
+
+      creatorAddress:
+        null,
+
+      ownerAddress:
+        null,
+
+      totalSupply:
+        "1000000",
+
+      creatorSupplyPct:
+        0,
+
+      topHolders: [
+        {
+          address:
+            poolManagerAddress,
+
+          balance:
+            "700000",
+
+          percentPct:
+            70,
+
+          isContract:
+            true,
+
+          isLocked:
+            false,
+
+          tag:
+            null,
+
+          excludedFromCirculatingConcentration:
+            false,
+
+          exclusionReason:
+            null
+        },
+
+        {
+          address:
+            whaleAddress,
+
+          balance:
+            "200000",
+
+          percentPct:
+            20,
+
+          isContract:
+            false,
+
+          isLocked:
+            false,
+
+          tag:
+            null,
+
+          excludedFromCirculatingConcentration:
+            false,
+
+          exclusionReason:
+            null
+        }
+      ],
+
+      risks:
+        [],
+
+      error:
+        null
+    };
+
+    const report =
+      await generateTokenIntelligenceReport(
+        createRegistry(),
+        {
+          fetchDex:
+            async () =>
+              new Map(
+                [
+                  [
+                    identity,
+                    dex
+                  ]
+                ]
+              ),
+
+          fetchSecurity:
+            async () =>
+              new Map(
+                [
+                  [
+                    identity,
+                    security
+                  ]
+                ]
+              ),
+
+          now:
+            () =>
+              "2026-06-30T00:00:00.000Z"
+        }
+      );
+
+    const entry =
+      report.tokens[0];
+
+    assert.ok(entry);
+
+    assert.equal(
+      entry.holders
+        .rawTop10SupplyPct,
+      90
+    );
+
+    assert.equal(
+      entry.holders
+        .dexPoolSupplyPct,
+      0
+    );
+
+    assert.equal(
+      entry.holders
+        .protocolLiquiditySupplyPct,
+      70
+    );
+
+    assert.equal(
+      entry.holders
+        .excludedKnownSupplyPct,
+      70
+    );
+
+    assert.equal(
+      entry.holders
+        .top10SupplyPct,
+      20
+    );
+
+    assert.match(
+      entry.holders
+        .evidence
+        .join(" "),
+      /Uniswap v4 PoolManager/u
+    );
+
+    assert.match(
+      entry.holders
+        .evidence
+        .join(" "),
+      /verified protocol liquidity custody/u
+    );
+  }
+);

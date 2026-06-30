@@ -1761,6 +1761,48 @@ function createMissingHolderSnapshot(
   };
 }
 
+const VERIFIED_PROTOCOL_CUSTODY_ADDRESSES:
+  Readonly<
+    Record<
+      string,
+      Readonly<
+        Record<
+          string,
+          string
+        >
+      >
+    >
+  > = {
+    base: {
+      "0x498581ff718922c3f8e6a244956af099b2652b2b":
+        "Uniswap v4 PoolManager"
+    }
+  };
+
+function getVerifiedProtocolCustodyLabel(
+  chainId: string,
+  address: string
+): string | null {
+  const normalizedChainId =
+    chainId
+      .trim()
+      .toLowerCase();
+
+  const normalizedAddress =
+    normalizeHolderAddress(
+      address
+    );
+
+  return (
+    VERIFIED_PROTOCOL_CUSTODY_ADDRESSES[
+      normalizedChainId
+    ]?.[
+      normalizedAddress
+    ] ??
+    null
+  );
+}
+
 function normalizeHolderAddress(
   value: string
 ): string {
@@ -1870,6 +1912,9 @@ function createGoPlusHolderSnapshots(
           dexPoolSupplyPct:
             null,
 
+          protocolLiquiditySupplyPct:
+            null,
+
           creatorSupplyPct:
             security
               ?.creatorSupplyPct ??
@@ -1910,6 +1955,26 @@ function createGoPlusHolderSnapshots(
           )
         );
 
+    const getProtocolCustodyLabel =
+      (
+        holder:
+          typeof holdersWithPercent[number]
+      ): string | null =>
+        getVerifiedProtocolCustodyLabel(
+          token.chainId,
+          holder.address
+        );
+
+    const isVerifiedProtocolCustody =
+      (
+        holder:
+          typeof holdersWithPercent[number]
+      ): boolean =>
+        getProtocolCustodyLabel(
+          holder
+        ) !==
+        null;
+
     const isExcluded =
       (
         holder:
@@ -1918,6 +1983,9 @@ function createGoPlusHolderSnapshots(
         holder
           .excludedFromCirculatingConcentration ||
         isKnownDexPool(
+          holder
+        ) ||
+        isVerifiedProtocolCustody(
           holder
         );
 
@@ -1953,6 +2021,27 @@ function createGoPlusHolderSnapshots(
               (
                 holder.percentPct ??
                   0
+              ),
+
+            0
+          )
+      );
+
+    const protocolLiquiditySupplyPct =
+      clamp(
+        holdersWithPercent
+          .filter(
+            isVerifiedProtocolCustody
+          )
+          .reduce(
+            (
+              total,
+              holder
+            ) =>
+              total +
+              (
+                holder.percentPct ??
+                0
               ),
 
             0
@@ -2014,6 +2103,31 @@ function createGoPlusHolderSnapshots(
         isKnownDexPool
       ).length;
 
+    const protocolCustodyHolders =
+      holdersWithPercent.filter(
+        isVerifiedProtocolCustody
+      );
+
+    const protocolCustodyCount =
+      protocolCustodyHolders.length;
+
+    const protocolCustodyLabels =
+      [
+        ...new Set(
+          protocolCustodyHolders
+            .map(
+              getProtocolCustodyLabel
+            )
+            .filter(
+              (
+                label
+              ): label is string =>
+                label !==
+                null
+            )
+        )
+      ];
+
     snapshots.set(
       identity,
       {
@@ -2036,6 +2150,8 @@ function createGoPlusHolderSnapshots(
 
         dexPoolSupplyPct,
 
+        protocolLiquiditySupplyPct,
+
         creatorSupplyPct:
           security
             .creatorSupplyPct ??
@@ -2057,6 +2173,11 @@ function createGoPlusHolderSnapshots(
           `${excludedCount} known non-circulating or liquidity records were excluded.`,
           `${dexPoolCount} holder records matched detected DEX pair addresses.`,
           `${dexPoolSupplyPct.toFixed(2)}% of supply was identified in detected DEX pools.`,
+          `${protocolCustodyCount} holder records matched verified protocol custody addresses.`,
+          `${protocolLiquiditySupplyPct.toFixed(2)}% of supply was identified in verified protocol liquidity custody.`,
+          protocolCustodyLabels.length > 0
+            ? `Verified protocol custody: ${protocolCustodyLabels.join(", ")}.`
+            : "No verified protocol custody holder was present in the returned sample.",
           `${excludedKnownSupplyPct.toFixed(2)}% of supply was excluded from circulating concentration.`,
           "This is sampled top-holder concentration, not complete wallet-cluster analysis."
         ],

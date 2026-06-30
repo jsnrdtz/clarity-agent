@@ -165,6 +165,10 @@ export type TokenHolderSnapshot = {
     number |
     null;
 
+  protocolLiquiditySupplyPct?:
+    number |
+    null;
+
   creatorSupplyPct?:
     number |
     null;
