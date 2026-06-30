@@ -7,6 +7,10 @@ import {
 } from "./commands/bankr-candidates.js";
 
 import {
+  runTokenIntelligenceCommand
+} from "./commands/token-intelligence.js";
+
+import {
   evaluateAgentJson
 } from "./commands/evaluate.js";
 
@@ -69,6 +73,8 @@ Clarity Agent v0.2
 Available commands:
 
 refresh [--json]
+bankr-candidates [--json]
+token-intelligence [--json]
 agents
 top
 rate <agent>
@@ -483,6 +489,44 @@ listRegisteredAgents();
     console.log(result);
     break;
   }
+
+      case "token-intelligence": {
+        const [
+          formatFlag,
+          ...extraArguments
+        ] = args;
+
+        if (
+          extraArguments.length > 0 ||
+          (
+            formatFlag &&
+            formatFlag !== "--json"
+          )
+        ) {
+          throw new Error(
+            "Usage: token-intelligence [--json]"
+          );
+        }
+
+        const result =
+          await runTokenIntelligenceCommand(
+            formatFlag === "--json"
+          );
+
+        console.log(
+          result.output
+        );
+
+        if (
+          result.hasFailures
+        ) {
+          process.exitCode =
+            1;
+        }
+
+        break;
+      }
+
 
       case "bankr-candidates": {
         const asJson = args[0] === "--json";

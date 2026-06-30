@@ -154,3 +154,6 @@ data/candidates/*.tmp
 # Generated automatic agent registry
 data/registry/*.json
 data/registry/*.tmp
+# Generated token intelligence
+data/token-intelligence/*.json
+data/token-intelligence/*.tmp

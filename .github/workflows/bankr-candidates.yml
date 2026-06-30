@@ -222,6 +222,118 @@ jobs:
           );
           NODE
 
+      - name: Generate token intelligence
+        shell: bash
+        run: |
+          set +e
+
+          npm run token:intelligence
+          COMMAND_STATUS="$?"
+
+          set -e
+
+          echo "Token intelligence command exit code: ${COMMAND_STATUS}"
+
+          if [ ! -s data/token-intelligence/bankr-tokens.json ]; then
+            echo "Token intelligence report was not generated."
+            exit 1
+          fi
+
+      - name: Validate token intelligence
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs =
+            require("node:fs");
+
+          const registry =
+            JSON.parse(
+              fs.readFileSync(
+                "data/registry/bankr-agents.json",
+                "utf8"
+              )
+            );
+
+          const report =
+            JSON.parse(
+              fs.readFileSync(
+                "data/token-intelligence/bankr-tokens.json",
+                "utf8"
+              )
+            );
+
+          if (
+            report.schemaVersion !==
+              "1.0" ||
+            report.source !==
+              "bankr"
+          ) {
+            throw new Error(
+              "Unexpected token intelligence schema."
+            );
+          }
+
+          if (
+            !Array.isArray(
+              report.tokens
+            ) ||
+            report.tokens.length !==
+              registry.agents.length ||
+            report.summary?.total !==
+              registry.agents.length
+          ) {
+            throw new Error(
+              "Token intelligence count does not match the automatic registry."
+            );
+          }
+
+          const registrySlugs =
+            new Set(
+              registry.agents.map(
+                (agent) =>
+                  agent.slug
+              )
+            );
+
+          for (
+            const token
+            of report.tokens
+          ) {
+            if (
+              !registrySlugs.has(
+                token.slug
+              )
+            ) {
+              throw new Error(
+                `Unknown token intelligence slug: ${token.slug}`
+              );
+            }
+
+            if (
+              !token.token?.address ||
+              !token.token?.chainId
+            ) {
+              throw new Error(
+                `Missing token identity for ${token.slug}`
+              );
+            }
+          }
+
+          console.log(
+            JSON.stringify(
+              {
+                generatedAt:
+                  report.generatedAt,
+
+                summary:
+                  report.summary
+              },
+              null,
+              2
+            )
+          );
+          NODE
+
       - name: Publish candidate report
         shell: bash
         env:
@@ -255,5 +367,6 @@ jobs:
           path: |
             data/candidates/bankr.json
             data/registry/bankr-agents.json
+            data/token-intelligence/bankr-tokens.json
           if-no-files-found: error
           retention-days: 14
