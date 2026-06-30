@@ -363,6 +363,192 @@ export const openApiDocument = {
       }
     },
 
+    "/api/v1/candidates/bankr/reviews": {
+      get: {
+        tags: [
+          "Candidate Review"
+        ],
+
+        summary:
+          "Get public candidate review statuses",
+
+        operationId:
+          "getPublicCandidateReviews",
+
+        responses: {
+          "200": {
+            description:
+              "Review statuses with private notes and registry proposals removed.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/CandidateReviewView"
+                }
+              }
+            }
+          },
+
+          "404": {
+            description:
+              "No published candidate report is available.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "/api/v1/admin/candidates/bankr/reviews": {
+      get: {
+        tags: [
+          "Administration"
+        ],
+
+        summary:
+          "Get the complete administrative review queue",
+
+        operationId:
+          "getCandidateReviewQueue",
+
+        security: [
+          {
+            candidateReviewBearer:
+              []
+          }
+        ],
+
+        responses: {
+          "200": {
+            description:
+              "Complete review queue including private notes and registry proposals.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/CandidateReviewView"
+                }
+              }
+            }
+          },
+
+          "401": {
+            description:
+              "Review Bearer authentication failed.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+
+      post: {
+        tags: [
+          "Administration"
+        ],
+
+        summary:
+          "Approve, reject, or reset a candidate repository",
+
+        operationId:
+          "updateCandidateReview",
+
+        security: [
+          {
+            candidateReviewBearer:
+              []
+          }
+        ],
+
+        requestBody: {
+          required:
+            true,
+
+          content: {
+            "application/json": {
+              schema: {
+                $ref:
+                  "#/components/schemas/CandidateReviewRequest"
+              }
+            }
+          }
+        },
+
+        responses: {
+          "200": {
+            description:
+              "Review decision was saved.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/CandidateReviewView"
+                }
+              }
+            }
+          },
+
+          "400": {
+            description:
+              "Invalid review request.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+
+          "401": {
+            description:
+              "Review Bearer authentication failed.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+
+          "404": {
+            description:
+              "Candidate repository is not in the current report.",
+
+            content: {
+              "application/json": {
+                schema: {
+                  $ref:
+                    "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
     "/api/v1/admin/candidates/bankr": {
       post: {
         tags: [
@@ -726,6 +912,14 @@ export const openApiDocument = {
 
         description:
           "Administrative candidate report upload token."
+      },
+
+      candidateReviewBearer: {
+        type: "http",
+        scheme: "bearer",
+
+        description:
+          "Administrative candidate review token."
       }
     },
 
@@ -744,6 +938,66 @@ export const openApiDocument = {
           "websiteDiscovery",
           "ownerDiscovery",
           "githubEvidence"
+        ],
+
+        additionalProperties:
+          true
+      },
+
+      CandidateReviewRequest: {
+        type: "object",
+
+        required: [
+          "bankrProfileId",
+          "repositoryUrl",
+          "decision"
+        ],
+
+        additionalProperties:
+          false,
+
+        properties: {
+          bankrProfileId: {
+            type: "string",
+            minLength: 1
+          },
+
+          repositoryUrl: {
+            type: "string",
+            format: "uri"
+          },
+
+          decision: {
+            type: "string",
+            enum: [
+              "approve",
+              "reject",
+              "reset"
+            ]
+          },
+
+          note: {
+            type: [
+              "string",
+              "null"
+            ],
+
+            maxLength:
+              500
+          }
+        }
+      },
+
+      CandidateReviewView: {
+        type: "object",
+
+        required: [
+          "schemaVersion",
+          "reportGeneratedAt",
+          "reviewUpdatedAt",
+          "counts",
+          "items",
+          "proposals"
         ],
 
         additionalProperties:

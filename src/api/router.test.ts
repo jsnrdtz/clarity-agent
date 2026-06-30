@@ -1838,3 +1838,516 @@ test(
     );
   }
 );
+
+function setCandidateReviewEnvironment(
+  token:
+    string |
+    undefined,
+
+  reviewPath:
+    string
+): () => void {
+  const previousToken =
+    process.env
+      .CLARITY_CANDIDATE_REVIEW_TOKEN;
+
+  const previousPath =
+    process.env
+      .CLARITY_CANDIDATE_REVIEW_PATH;
+
+  if (
+    token === undefined
+  ) {
+    delete process.env
+      .CLARITY_CANDIDATE_REVIEW_TOKEN;
+  } else {
+    process.env
+      .CLARITY_CANDIDATE_REVIEW_TOKEN =
+        token;
+  }
+
+  process.env
+    .CLARITY_CANDIDATE_REVIEW_PATH =
+      reviewPath;
+
+  return () => {
+    if (
+      previousToken === undefined
+    ) {
+      delete process.env
+        .CLARITY_CANDIDATE_REVIEW_TOKEN;
+    } else {
+      process.env
+        .CLARITY_CANDIDATE_REVIEW_TOKEN =
+          previousToken;
+    }
+
+    if (
+      previousPath === undefined
+    ) {
+      delete process.env
+        .CLARITY_CANDIDATE_REVIEW_PATH;
+    } else {
+      process.env
+        .CLARITY_CANDIDATE_REVIEW_PATH =
+          previousPath;
+    }
+  };
+}
+
+test(
+  "approves a candidate repository and builds a registry proposal",
+  async () => {
+    const uploadToken =
+      "0123456789abcdef0123456789abcdef";
+
+    const reviewToken =
+      "abcdef0123456789abcdef0123456789";
+
+    const suffix =
+      `${process.pid}-${Date.now()}`;
+
+    const reportPath =
+      `/tmp/clarity-review-report-${suffix}.json`;
+
+    const reviewPath =
+      `/tmp/clarity-review-state-${suffix}.json`;
+
+    const restoreUpload =
+      setCandidateUploadEnvironment(
+        uploadToken,
+        reportPath
+      );
+
+    const restoreReview =
+      setCandidateReviewEnvironment(
+        reviewToken,
+        reviewPath
+      );
+
+    try {
+      const report:
+        any =
+        createCandidateReportFixture();
+
+      report
+        .candidates[0]
+        .githubRepositories = [
+          {
+            owner:
+              "example-org",
+
+            repository:
+              "example-agent",
+
+            url:
+              "https://github.com/example-org/example-agent",
+
+            sources: [
+              "website-page"
+            ],
+
+            relationship:
+              "primary",
+
+            confidence:
+              "high",
+
+            reasons: [
+              "Official website links directly to this repository."
+            ]
+          }
+        ];
+
+      const upload =
+        await getJson(
+          "/api/v1/admin/candidates/bankr",
+          {
+            method:
+              "POST",
+
+            headers: {
+              Authorization:
+                `Bearer ${uploadToken}`,
+
+              "Content-Type":
+                "application/json"
+            },
+
+            body:
+              JSON.stringify(
+                report
+              )
+          }
+        );
+
+      assert.equal(
+        upload.response.status,
+        200
+      );
+
+      const approval =
+        await getJson(
+          "/api/v1/admin/candidates/bankr/reviews",
+          {
+            method:
+              "POST",
+
+            headers: {
+              Authorization:
+                `Bearer ${reviewToken}`,
+
+              "Content-Type":
+                "application/json"
+            },
+
+            body:
+              JSON.stringify(
+                {
+                  bankrProfileId:
+                    "profile-1",
+
+                  repositoryUrl:
+                    "https://github.com/example-org/example-agent",
+
+                  decision:
+                    "approve",
+
+                  note:
+                    "Repository verified manually."
+                }
+              )
+          }
+        );
+
+      assert.equal(
+        approval.response.status,
+        200
+      );
+
+      const approvalBody =
+        approval.body as {
+          counts: {
+            approved: number;
+          };
+
+          proposals: Array<{
+            entry: {
+              github: {
+                repository: string;
+              };
+            };
+          }>;
+        };
+
+      assert.equal(
+        approvalBody
+          .counts
+          .approved,
+        1
+      );
+
+      assert.equal(
+        approvalBody
+          .proposals
+          .length,
+        1
+      );
+
+      assert.equal(
+        approvalBody
+          .proposals[0]
+          ?.entry
+          .github
+          .repository,
+        "example-agent"
+      );
+
+      const publicReview =
+        await getJson(
+          "/api/v1/candidates/bankr/reviews"
+        );
+
+      assert.equal(
+        publicReview.response.status,
+        200
+      );
+
+      const publicReviewBody =
+        publicReview.body as {
+          items: Array<{
+            decision: {
+              status: string;
+              note: string | null;
+            } | null;
+          }>;
+        };
+
+      assert.equal(
+        publicReviewBody
+          .items[0]
+          ?.decision
+          ?.status,
+        "approved"
+      );
+
+      assert.equal(
+        publicReviewBody
+          .items[0]
+          ?.decision
+          ?.note,
+        null
+      );
+
+      assert.deepEqual(
+        (
+          publicReview.body as {
+            proposals: unknown[];
+          }
+        ).proposals,
+        []
+      );
+
+      const administrativeReview =
+        await getJson(
+          "/api/v1/admin/candidates/bankr/reviews",
+          {
+            headers: {
+              Authorization:
+                `Bearer ${reviewToken}`
+            }
+          }
+        );
+
+      assert.equal(
+        administrativeReview
+          .response
+          .status,
+        200
+      );
+
+      const administrativeBody =
+        administrativeReview.body as {
+          items: Array<{
+            decision: {
+              note: string | null;
+            } | null;
+          }>;
+
+          proposals: unknown[];
+        };
+
+      assert.equal(
+        administrativeBody
+          .items[0]
+          ?.decision
+          ?.note,
+        "Repository verified manually."
+      );
+
+      assert.equal(
+        administrativeBody
+          .proposals
+          .length,
+        1
+      );
+    } finally {
+      restoreReview();
+      restoreUpload();
+
+      const {
+        unlink
+      } =
+        await import(
+          "node:fs/promises"
+        );
+
+      await Promise.all(
+        [
+          reportPath,
+          reviewPath
+        ].map(
+          (filePath) =>
+            unlink(
+              filePath
+            ).catch(
+              () => undefined
+            )
+        )
+      );
+    }
+  }
+);
+
+test(
+  "requires candidate review Bearer authentication",
+  async () => {
+    const token =
+      "abcdef0123456789abcdef0123456789";
+
+    const suffix =
+      `${process.pid}-${Date.now()}`;
+
+    const reviewPath =
+      `/tmp/clarity-review-auth-${suffix}.json`;
+
+    const restore =
+      setCandidateReviewEnvironment(
+        token,
+        reviewPath
+      );
+
+    try {
+      const {
+        response,
+        body
+      } =
+        await getJson(
+          "/api/v1/admin/candidates/bankr/reviews",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json"
+            },
+
+            body:
+              JSON.stringify(
+                {
+                  bankrProfileId:
+                    "profile-1",
+
+                  repositoryUrl:
+                    "https://github.com/example/example",
+
+                  decision:
+                    "approve"
+                }
+              )
+          }
+        );
+
+      assert.equal(
+        response.status,
+        401
+      );
+
+      assert.equal(
+        response.headers.get(
+          "www-authenticate"
+        ),
+        "Bearer"
+      );
+
+      assert.equal(
+        (
+          body.error as {
+            code: string;
+          }
+        ).code,
+        "CANDIDATE_REVIEW_AUTHENTICATION_FAILED"
+      );
+    } finally {
+      restore();
+    }
+  }
+);
+
+test(
+  "requires Bearer authentication for the candidate review admin queue",
+  async () => {
+    const token =
+      "abcdef0123456789abcdef0123456789";
+
+    const reviewPath =
+      `/tmp/clarity-review-get-auth-${process.pid}-${Date.now()}.json`;
+
+    const restore =
+      setCandidateReviewEnvironment(
+        token,
+        reviewPath
+      );
+
+    try {
+      const {
+        response,
+        body
+      } =
+        await getJson(
+          "/api/v1/admin/candidates/bankr/reviews"
+        );
+
+      assert.equal(
+        response.status,
+        401
+      );
+
+      assert.equal(
+        response.headers.get(
+          "www-authenticate"
+        ),
+        "Bearer"
+      );
+
+      assert.equal(
+        (
+          body.error as {
+            code: string;
+          }
+        ).code,
+        "CANDIDATE_REVIEW_AUTHENTICATION_FAILED"
+      );
+    } finally {
+      restore();
+    }
+  }
+);
+
+test(
+  "serves the Candidate Review admin page",
+  async () => {
+    const response =
+      await fetch(
+        `${baseUrl}/candidates/admin`
+      );
+
+    assert.equal(
+      response.status,
+      200
+    );
+
+    assert.match(
+      await response.text(),
+      /Review Admin/
+    );
+  }
+);
+
+test(
+  "requires authentication for the administrative review queue",
+  async () => {
+    const {
+      response,
+      body
+    } =
+      await getJson(
+        "/api/v1/admin/candidates/bankr/reviews"
+      );
+
+    assert.equal(
+      response.status,
+      503
+    );
+
+    assert.equal(
+      (
+        body.error as {
+          code: string;
+        }
+      ).code,
+      "CANDIDATE_REVIEW_NOT_CONFIGURED"
+    );
+  }
+);

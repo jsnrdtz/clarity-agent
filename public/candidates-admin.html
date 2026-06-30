@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+
+  <meta
+    name="description"
+    content="Clarity administrative candidate review console."
+  >
+
+  <title>Candidate Admin — Clarity</title>
+
+  <link
+    rel="stylesheet"
+    href="/styles.css"
+  >
+
+  <script
+    src="/candidates-admin.js"
+    defer
+  ></script>
+</head>
+
+<body class="cr-page cra-page">
+  <header class="cr-topbar">
+    <a
+      class="cr-brand"
+      href="/"
+    >
+      CLARITY
+    </a>
+
+    <span>
+      REVIEW ADMIN
+    </span>
+
+    <a
+      class="cr-back"
+      href="/candidates"
+    >
+      ← PUBLIC REVIEW
+    </a>
+  </header>
+
+  <main class="cr-shell">
+    <section class="cr-hero">
+      <div>
+        <p class="cr-kicker">
+          MANUAL REGISTRY GATE
+        </p>
+
+        <h1>
+          Review Admin
+        </h1>
+
+        <p class="cr-intro">
+          Approve or reject candidate repositories.
+          Approval creates a registry proposal only.
+          It never modifies the trusted registry automatically.
+        </p>
+      </div>
+
+      <div
+        id="cra-status"
+        class="cr-status"
+      >
+        TOKEN REQUIRED
+      </div>
+    </section>
+
+    <section class="cra-auth">
+      <label>
+        <span>REVIEW TOKEN</span>
+
+        <input
+          id="cra-token"
+          type="password"
+          placeholder="Bearer token"
+          autocomplete="off"
+          spellcheck="false"
+        >
+      </label>
+
+      <button
+        id="cra-load"
+        type="button"
+      >
+        LOAD REVIEW QUEUE
+      </button>
+
+      <button
+        id="cra-forget"
+        type="button"
+        class="cra-secondary"
+      >
+        FORGET TOKEN
+      </button>
+    </section>
+
+    <section
+      id="cra-summary"
+      class="cr-summary"
+      aria-label="Review summary"
+    ></section>
+
+    <section class="cr-controls">
+      <label>
+        <span>SEARCH</span>
+
+        <input
+          id="cra-search"
+          type="search"
+          placeholder="Agent, owner or repository"
+          autocomplete="off"
+        >
+      </label>
+
+      <label>
+        <span>STATUS</span>
+
+        <select id="cra-filter">
+          <option value="all">
+            ALL
+          </option>
+
+          <option value="pending">
+            PENDING
+          </option>
+
+          <option value="approved">
+            APPROVED
+          </option>
+
+          <option value="rejected">
+            REJECTED
+          </option>
+
+          <option value="probable">
+            PROBABLE DISCOVERY
+          </option>
+        </select>
+      </label>
+    </section>
+
+    <section class="cra-proposals">
+      <div>
+        <span>REGISTRY PROPOSALS</span>
+
+        <strong id="cra-proposal-count">
+          0
+        </strong>
+      </div>
+
+      <button
+        id="cra-copy-proposals"
+        type="button"
+        class="cra-secondary"
+        disabled
+      >
+        COPY ELIGIBLE JSON
+      </button>
+    </section>
+
+    <section
+      id="cra-results"
+      class="cr-results cra-results"
+      aria-live="polite"
+    >
+      <div class="cr-empty">
+        ENTER THE REVIEW TOKEN
+      </div>
+    </section>
+  </main>
+</body>
+</html>

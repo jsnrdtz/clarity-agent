@@ -30,7 +30,9 @@ test(
         "/api/v1/search",
         "/api/v1/evaluate/{agent}",
         "/api/v1/candidates/bankr",
+        "/api/v1/candidates/bankr/reviews",
         "/api/v1/admin/candidates/bankr",
+        "/api/v1/admin/candidates/bankr/reviews",
         "/api/v1/admin/refresh",
         "/api/v1/ranking",
         "/api/v1/compare/{left}/{right}"
@@ -207,6 +209,44 @@ test(
         .components
         .securitySchemes
         .candidateUploadBearer
+    );
+  }
+);
+
+
+test(
+  "protects candidate review administration",
+  () => {
+    const endpoint =
+      openApiDocument.paths[
+        "/api/v1/admin/candidates/bankr/reviews"
+      ];
+
+    assert.deepEqual(
+      endpoint.get.security,
+      [
+        {
+          candidateReviewBearer:
+            []
+        }
+      ]
+    );
+
+    assert.deepEqual(
+      endpoint.post.security,
+      [
+        {
+          candidateReviewBearer:
+            []
+        }
+      ]
+    );
+
+    assert.ok(
+      openApiDocument
+        .components
+        .securitySchemes
+        .candidateReviewBearer
     );
   }
 );

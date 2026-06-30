@@ -28,6 +28,14 @@ import {
 } from "../services/bankr-candidate-storage.js";
 
 import {
+  authenticateCandidateReview,
+  createPublicCandidateReviewView,
+  getCandidateReviewView,
+  readCandidateReviewRequest,
+  updateCandidateReview
+} from "../services/candidate-review.js";
+
+import {
   applyRequestRateLimit,
   DEFAULT_API_RATE_LIMIT_POLICIES,
   type ApiRateLimitPolicies
@@ -187,6 +195,7 @@ function isKnownGetPath(
     pathname === "/health" ||
     pathname === "/api/v1/agents" ||
     pathname === "/api/v1/candidates/bankr" ||
+    pathname === "/api/v1/candidates/bankr/reviews" ||
     pathname === "/api/v1/search" ||
     pathname === "/api/v1/ranking" ||
     /^\/api\/v1\/compare\/[^/]+\/[^/]+$/.test(
@@ -246,7 +255,9 @@ function sendError(
     normalized.code ===
       "REFRESH_AUTHENTICATION_FAILED" ||
     normalized.code ===
-      "CANDIDATE_UPLOAD_AUTHENTICATION_FAILED"
+      "CANDIDATE_UPLOAD_AUTHENTICATION_FAILED" ||
+    normalized.code ===
+      "CANDIDATE_REVIEW_AUTHENTICATION_FAILED"
   ) {
     response.setHeader(
       "WWW-Authenticate",
@@ -311,6 +322,7 @@ function sendError(
 async function routeGetRequest(
   pathname: string,
   searchParams: URLSearchParams,
+  request: IncomingMessage,
   response: ServerResponse
 ): Promise<void> {
   if (
@@ -399,6 +411,54 @@ async function routeGetRequest(
       response,
       200,
       report
+    );
+
+    return;
+  }
+
+  if (
+    pathname ===
+    "/api/v1/candidates/bankr/reviews"
+  ) {
+    const report =
+      await loadPublishedCandidateReport();
+
+    const review =
+      await getCandidateReviewView(
+        report
+      );
+
+    sendJson(
+      response,
+      200,
+      createPublicCandidateReviewView(
+        review
+      )
+    );
+
+    return;
+  }
+
+  if (
+    pathname ===
+    "/api/v1/admin/candidates/bankr/reviews"
+  ) {
+    authenticateCandidateReview(
+      request.headers.authorization
+    );
+
+    const report =
+      await loadPublishedCandidateReport();
+
+    const review =
+      await getCandidateReviewView(
+        report
+      );
+
+    sendJson(
+      response,
+      200,
+      review
     );
 
     return;
@@ -509,6 +569,37 @@ async function routePostRequest(
   response: ServerResponse,
   dependencies: ApiDependencies
 ): Promise<void> {
+  if (
+    pathname ===
+    "/api/v1/admin/candidates/bankr/reviews"
+  ) {
+    authenticateCandidateReview(
+      request.headers.authorization
+    );
+
+    const report =
+      await loadPublishedCandidateReport();
+
+    const input =
+      await readCandidateReviewRequest(
+        request
+      );
+
+    const review =
+      await updateCandidateReview(
+        report,
+        input
+      );
+
+    sendJson(
+      response,
+      200,
+      review
+    );
+
+    return;
+  }
+
   if (
     pathname ===
     "/api/v1/admin/candidates/bankr"
@@ -648,6 +739,7 @@ export async function handleApiRequest(
       await routeGetRequest(
         requestUrl.pathname,
         requestUrl.searchParams,
+        request,
         response
       );
 

@@ -96,6 +96,39 @@ const STATIC_PUBLIC_ASSETS:
 
       cacheControl:
         "public, max-age=300"
+    },
+
+    "/candidates/admin": {
+      fileName:
+        "candidates-admin.html",
+
+      contentType:
+        "text/html; charset=utf-8",
+
+      cacheControl:
+        "no-cache"
+    },
+
+    "/candidates/admin/": {
+      fileName:
+        "candidates-admin.html",
+
+      contentType:
+        "text/html; charset=utf-8",
+
+      cacheControl:
+        "no-cache"
+    },
+
+    "/candidates-admin.js": {
+      fileName:
+        "candidates-admin.js",
+
+      contentType:
+        "text/javascript; charset=utf-8",
+
+      cacheControl:
+        "public, max-age=300"
     }
   };
 

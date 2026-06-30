@@ -1,6 +1,10 @@
 const state = {
   items: [],
-  report: null
+  report: null,
+  reviews: null,
+
+  reviewByTarget:
+    new Map()
 };
 
 const statusElement =
@@ -76,6 +80,94 @@ function safeUrl(
   } catch {
     return null;
   }
+}
+
+function normalizeRepositoryUrl(
+  value
+) {
+  try {
+    const parsed =
+      new URL(
+        String(value)
+      );
+
+    return [
+      parsed.hostname.toLowerCase(),
+      parsed.pathname
+        .replace(
+          /\/$/u,
+          ""
+        )
+        .toLowerCase()
+    ].join("");
+  } catch {
+    return String(
+      value ??
+      ""
+    )
+      .trim()
+      .toLowerCase();
+  }
+}
+
+function createReviewTargetKey(
+  bankrProfileId,
+  repositoryUrl
+) {
+  return [
+    String(
+      bankrProfileId ??
+      ""
+    )
+      .trim()
+      .toLowerCase(),
+
+    normalizeRepositoryUrl(
+      repositoryUrl
+    )
+  ].join("\n");
+}
+
+function indexReviewDecisions(
+  reviews
+) {
+  state.reviewByTarget =
+    new Map();
+
+  for (
+    const item
+    of reviews?.items ??
+      []
+  ) {
+    state.reviewByTarget.set(
+      createReviewTargetKey(
+        item.bankrProfileId,
+        item.repositoryUrl
+      ),
+
+      item.decision
+    );
+  }
+}
+
+function renderDecisionBadge(
+  decision
+) {
+  if (!decision) {
+    return "";
+  }
+
+  const label =
+    decision.status ===
+      "approved"
+      ? "APPROVED"
+      : "REJECTED";
+
+  return `
+    <span class="cr-decision cr-decision-${escapeHtml(decision.status)}">
+      ${label}
+    </span>
+  `;
 }
 
 function formatDate(
@@ -215,6 +307,9 @@ function buildItems(
         status:
           "direct",
 
+        bankrProfileId:
+          candidate.bankrProfileId,
+
         title:
           candidate.name,
 
@@ -273,6 +368,9 @@ function buildItems(
           type:
             "owner",
 
+          bankrProfileId:
+            result.bankrProfileId,
+
           status:
             repository.probable
               ? "probable"
@@ -329,6 +427,14 @@ function renderDirectItem(
               repository.url
             );
 
+          const decision =
+            state.reviewByTarget.get(
+              createReviewTargetKey(
+                item.bankrProfileId,
+                repository.url
+              )
+            );
+
           return `
             <li>
               ${
@@ -348,6 +454,8 @@ function renderDirectItem(
                     </strong>
                   `
               }
+
+              ${renderDecisionBadge(decision)}
 
               <div class="cr-repo-meta">
                 <span>
@@ -429,6 +537,14 @@ function renderOwnerItem(
       repository.url
     );
 
+  const decision =
+    state.reviewByTarget.get(
+      createReviewTargetKey(
+        item.bankrProfileId,
+        repository.url
+      )
+    );
+
   const label =
     item.status ===
       "probable"
@@ -457,6 +573,8 @@ function renderOwnerItem(
           ${escapeHtml(repository.score)}
         </strong>
       </div>
+
+      ${renderDecisionBadge(decision)}
 
       <div class="cr-owner-repository">
         ${
@@ -573,10 +691,18 @@ function renderResults() {
 }
 
 function renderReport(
-  report
+  report,
+  reviews
 ) {
   state.report =
     report;
+
+  state.reviews =
+    reviews;
+
+  indexReviewDecisions(
+    reviews
+  );
 
   state.items =
     buildItems(
@@ -670,11 +796,31 @@ filterElement.addEventListener(
   renderResults
 );
 
-void requestJson(
-  "/api/v1/candidates/bankr"
+void Promise.all(
+  [
+    requestJson(
+      "/api/v1/candidates/bankr"
+    ),
+
+    requestJson(
+      "/api/v1/candidates/bankr/reviews"
+    ).catch(
+      () => null
+    )
+  ]
 )
   .then(
-    renderReport
+    (
+      [
+        report,
+        reviews
+      ]
+    ) => {
+      renderReport(
+        report,
+        reviews
+      );
+    }
   )
   .catch(
     renderError
