@@ -419,3 +419,311 @@ test(
     );
   }
 );
+
+test(
+  "does not promote an exact-name search-only match to probable",
+  () => {
+    const matches =
+      rankBankrGlobalGitHubRepositories(
+        createCandidate(
+          {
+            name:
+              "Echo",
+
+            bankrSlug:
+              "echo",
+
+            website:
+              "https://builtbyecho.xyz"
+          }
+        ),
+
+        [
+          {
+            repository:
+              createRepository(
+                {
+                  owner:
+                    "snowykte0426",
+
+                  repository:
+                    "echo",
+
+                  fullName:
+                    "snowykte0426/echo",
+
+                  url:
+                    "https://github.com/snowykte0426/echo",
+
+                  description:
+                    "Echo: 2D RPG",
+
+                  homepage:
+                    null,
+
+                  stars:
+                    1
+                }
+              ),
+
+            matchedBy: [
+              "project-name"
+            ]
+          }
+        ]
+      );
+
+    assert.equal(
+      matches[0]
+        ?.status,
+      "weak"
+    );
+
+    assert.equal(
+      matches[0]
+        ?.role,
+      "unknown"
+    );
+
+    assert.equal(
+      matches[0]
+        ?.probable,
+      false
+    );
+  }
+);
+
+test(
+  "treats an exact owner and repository identity as strong evidence",
+  () => {
+    const matches =
+      rankBankrGlobalGitHubRepositories(
+        createCandidate(
+          {
+            name:
+              "Claw Harbor",
+
+            bankrSlug:
+              "claw-harbor",
+
+            website:
+              null
+          }
+        ),
+
+        [
+          {
+            repository:
+              createRepository(
+                {
+                  owner:
+                    "clawharbor",
+
+                  repository:
+                    "clawharbor",
+
+                  fullName:
+                    "clawharbor/clawharbor",
+
+                  url:
+                    "https://github.com/clawharbor/clawharbor",
+
+                  description:
+                    null,
+
+                  homepage:
+                    null,
+
+                  stars:
+                    15
+                }
+              ),
+
+            matchedBy: [
+              "compact-slug"
+            ]
+          }
+        ]
+      );
+
+    assert.equal(
+      matches[0]
+        ?.role,
+      "primary-candidate"
+    );
+
+    assert.equal(
+      matches[0]
+        ?.status,
+      "probable"
+    );
+
+    assert.equal(
+      matches[0]
+        ?.probable,
+      true
+    );
+  }
+);
+
+test(
+  "downgrades ambiguous repositories with similar scores",
+  () => {
+    const candidate =
+      createCandidate(
+        {
+          name:
+            "ForgeOracle",
+
+          bankrSlug:
+            "forgeoracle",
+
+          website:
+            "https://mythosforge.xyz"
+        }
+      );
+
+    const matches =
+      rankBankrGlobalGitHubRepositories(
+        candidate,
+
+        [
+          "owner-one",
+          "owner-two",
+          "owner-three"
+        ].map(
+          (owner) => ({
+            repository:
+              createRepository(
+                {
+                  owner,
+
+                  repository:
+                    "forgeoracle",
+
+                  fullName:
+                    `${owner}/forgeoracle`,
+
+                  url:
+                    `https://github.com/${owner}/forgeoracle`,
+
+                  description:
+                    "ForgeOracle dApp on a test network.",
+
+                  homepage:
+                    null,
+
+                  stars:
+                    0
+                }
+              ),
+
+            matchedBy: [
+              "project-name",
+              "compact-slug"
+            ]
+          })
+        )
+      );
+
+    assert.equal(
+      matches.length,
+      3
+    );
+
+    assert.equal(
+      matches.every(
+        (match) =>
+          match.status ===
+            "weak"
+      ),
+      true
+    );
+
+    assert.match(
+      matches[0]
+        ?.reasons
+        .join(
+          " "
+        ) ??
+        "",
+
+      /ambiguity/u
+    );
+  }
+);
+
+test(
+  "never marks a component as probable even with official evidence",
+  () => {
+    const matches =
+      rankBankrGlobalGitHubRepositories(
+        createCandidate(
+          {
+            name:
+              "molty.cash",
+
+            bankrSlug:
+              "moltycash",
+
+            website:
+              "https://molty.cash"
+          }
+        ),
+
+        [
+          {
+            repository:
+              createRepository(
+                {
+                  owner:
+                    "moltycash",
+
+                  repository:
+                    "moltycash-cli",
+
+                  fullName:
+                    "moltycash/moltycash-cli",
+
+                  url:
+                    "https://github.com/moltycash/moltycash-cli",
+
+                  description:
+                    null,
+
+                  homepage:
+                    "https://molty.cash",
+
+                  stars:
+                    1
+                }
+              ),
+
+            matchedBy: [
+              "project-name",
+              "compact-slug",
+              "official-domain"
+            ]
+          }
+        ]
+      );
+
+    assert.equal(
+      matches[0]
+        ?.role,
+      "component"
+    );
+
+    assert.equal(
+      matches[0]
+        ?.status,
+      "review"
+    );
+
+    assert.equal(
+      matches[0]
+        ?.probable,
+      false
+    );
+  }
+);

@@ -1121,6 +1121,15 @@ function collectReviewableRepositories(
       const repository
       of result.candidates
     ) {
+      if (
+        repository.status !==
+          "probable" &&
+        repository.status !==
+          "review"
+      ) {
+        continue;
+      }
+
       const normalized =
         normalizeGitHubRepositoryUrl(
           repository.url

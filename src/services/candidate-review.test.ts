@@ -134,6 +134,9 @@ function createReport(
               score:
                 95,
 
+              status:
+                "probable",
+
               probable:
                 true,
 
@@ -454,6 +457,54 @@ test(
         }
       );
     }
+  }
+);
+
+test(
+  "excludes weak global GitHub matches from the review queue",
+  () => {
+    const report =
+      createReport();
+
+    const result =
+      report
+        .globalGitHubDiscovery
+        .results[0];
+
+    const repository =
+      result
+        ?.candidates[0];
+
+    assert.ok(result);
+    assert.ok(repository);
+
+    result.status =
+      "weak";
+
+    repository.status =
+      "weak";
+
+    repository.probable =
+      false;
+
+    repository.score =
+      45;
+
+    const view =
+      buildCandidateReviewView(
+        report,
+        createState()
+      );
+
+    assert.equal(
+      view.counts.total,
+      0
+    );
+
+    assert.equal(
+      view.items.length,
+      0
+    );
   }
 );
 

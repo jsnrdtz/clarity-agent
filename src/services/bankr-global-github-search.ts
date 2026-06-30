@@ -236,6 +236,33 @@ function getHomepageDomain(
   }
 }
 
+function domainsMatch(
+  left:
+    string |
+    null,
+
+  right:
+    string |
+    null
+): boolean {
+  if (
+    !left ||
+    !right
+  ) {
+    return false;
+  }
+
+  return (
+    left === right ||
+    left.endsWith(
+      `.${right}`
+    ) ||
+    right.endsWith(
+      `.${left}`
+    )
+  );
+}
+
 function getDaysSincePush(
   pushedAt:
     string |
@@ -276,7 +303,8 @@ function classifyRepositoryRole(
     Pick<
       BankrCandidate,
       "name" |
-      "bankrSlug"
+      "bankrSlug" |
+      "website"
     >,
 
   repository:
@@ -285,6 +313,11 @@ function classifyRepositoryRole(
   const repositoryIdentity =
     normalizeIdentity(
       repository.repository
+    );
+
+  const ownerIdentity =
+    normalizeIdentity(
+      repository.owner
     );
 
   const candidateIdentities =
@@ -320,6 +353,45 @@ function classifyRepositoryRole(
       )
       .toLowerCase();
 
+  const exactRepositoryIdentity =
+    candidateIdentities.some(
+      (identity) =>
+        repositoryIdentity ===
+          identity
+    );
+
+  const exactOwnerIdentity =
+    candidateIdentities.some(
+      (identity) =>
+        ownerIdentity ===
+          identity
+    );
+
+  const closeOwnerIdentity =
+    candidateIdentities.some(
+      (identity) =>
+        identity.length >= 4 &&
+        (
+          ownerIdentity.includes(
+            identity
+          ) ||
+          identity.includes(
+            ownerIdentity
+          )
+        )
+    );
+
+  const homepageMatchesWebsite =
+    domainsMatch(
+      getWebsiteDomain(
+        candidate.website
+      ),
+
+      getHomepageDomain(
+        repository.homepage
+      )
+    );
+
   if (
     text.includes(
       "documentation"
@@ -329,6 +401,9 @@ function classifyRepositoryRole(
     ) ||
     repositoryIdentity.endsWith(
       "docs"
+    ) ||
+    repositoryIdentity.endsWith(
+      "documentation"
     )
   ) {
     return "documentation";
@@ -393,32 +468,52 @@ function classifyRepositoryRole(
     ) ||
     text.includes(
       "api "
+    ) ||
+    repositoryIdentity.endsWith(
+      "cli"
+    ) ||
+    repositoryIdentity.endsWith(
+      "skills"
+    ) ||
+    repositoryIdentity.endsWith(
+      "sdk"
+    ) ||
+    repositoryIdentity.endsWith(
+      "api"
+    ) ||
+    repositoryIdentity.endsWith(
+      "contracts"
+    ) ||
+    repositoryIdentity.endsWith(
+      "plugin"
+    ) ||
+    repositoryIdentity.endsWith(
+      "tools"
+    ) ||
+    repositoryIdentity.endsWith(
+      "containers"
+    ) ||
+    repositoryIdentity.includes(
+      "toolkit"
     )
   ) {
     return "component";
   }
 
+  const primaryLanguage =
+    /\b(?:autonomous\s+agents?|ai\s+agents?|agent\s+framework|agent\s+platform|operating\s+system|protocol|platform|monorepo|implementation|dapp|application)\b/u.test(
+      text
+    );
+
   if (
-    candidateIdentities.includes(
-      repositoryIdentity
-    ) ||
-    text.includes(
-      "agent framework"
-    ) ||
-    text.includes(
-      "autonomous agent"
-    ) ||
-    text.includes(
-      "ai agent"
-    ) ||
-    text.includes(
-      "operating system"
-    ) ||
-    text.includes(
-      "protocol"
-    ) ||
-    text.includes(
-      "platform"
+    homepageMatchesWebsite ||
+    primaryLanguage ||
+    (
+      exactRepositoryIdentity &&
+      (
+        exactOwnerIdentity ||
+        closeOwnerIdentity
+      )
     )
   ) {
     return "primary-candidate";
@@ -428,10 +523,28 @@ function classifyRepositoryRole(
 }
 
 function getMatchStatus(
-  score: number
+  score: number,
+
+  role:
+    BankrGlobalGitHubRepositoryRole,
+
+  strongProjectEvidence:
+    boolean,
+
+  disqualified:
+    boolean
 ): BankrGlobalGitHubMatchStatus {
   if (
-    score >= 80
+    disqualified
+  ) {
+    return "unrelated";
+  }
+
+  if (
+    score >= 80 &&
+    role ===
+      "primary-candidate" &&
+    strongProjectEvidence
   ) {
     return "probable";
   }
@@ -529,24 +642,61 @@ function scoreRepository(
           identity
     );
 
-  if (
-    exactRepositoryIdentity
-  ) {
-    addEvidence(
-      45,
-      "Repository name exactly matches the Bankr project identity."
-    );
-  } else if (
+  const containedRepositoryIdentity =
+    !exactRepositoryIdentity &&
     candidateIdentities.some(
       (identity) =>
         identity.length >= 4 &&
         repositoryIdentity.includes(
           identity
         )
-    )
+    );
+
+  const exactOwnerIdentity =
+    candidateIdentities.some(
+      (identity) =>
+        ownerIdentity ===
+          identity
+    );
+
+  const closeOwnerIdentity =
+    !exactOwnerIdentity &&
+    candidateIdentities.some(
+      (identity) =>
+        identity.length >= 4 &&
+        (
+          ownerIdentity.includes(
+            identity
+          ) ||
+          identity.includes(
+            ownerIdentity
+          )
+        )
+    );
+
+  const homepageMatchesWebsite =
+    domainsMatch(
+      getWebsiteDomain(
+        candidate.website
+      ),
+
+      getHomepageDomain(
+        repository.homepage
+      )
+    );
+
+  if (
+    exactRepositoryIdentity
   ) {
     addEvidence(
-      25,
+      30,
+      "Repository name exactly matches the Bankr project identity."
+    );
+  } else if (
+    containedRepositoryIdentity
+  ) {
+    addEvidence(
+      15,
       "Repository name contains the Bankr project identity."
     );
   }
@@ -561,35 +711,20 @@ function scoreRepository(
     )
   ) {
     addEvidence(
-      15,
+      10,
       "Repository description contains the Bankr project identity."
     );
   }
 
   if (
-    candidateIdentities.some(
-      (identity) =>
-        ownerIdentity ===
-          identity
-    )
+    exactOwnerIdentity
   ) {
     addEvidence(
-      20,
+      25,
       "GitHub owner exactly matches the Bankr project identity."
     );
   } else if (
-    candidateIdentities.some(
-      (identity) =>
-        identity.length >= 4 &&
-        (
-          ownerIdentity.includes(
-            identity
-          ) ||
-          identity.includes(
-            ownerIdentity
-          )
-        )
-    )
+    closeOwnerIdentity
   ) {
     addEvidence(
       10,
@@ -597,32 +732,11 @@ function scoreRepository(
     );
   }
 
-  const websiteDomain =
-    getWebsiteDomain(
-      candidate.website
-    );
-
-  const homepageDomain =
-    getHomepageDomain(
-      repository.homepage
-    );
-
   if (
-    websiteDomain &&
-    homepageDomain &&
-    (
-      websiteDomain ===
-        homepageDomain ||
-      websiteDomain.endsWith(
-        `.${homepageDomain}`
-      ) ||
-      homepageDomain.endsWith(
-        `.${websiteDomain}`
-      )
-    )
+    homepageMatchesWebsite
   ) {
     addEvidence(
-      30,
+      40,
       "Repository homepage matches the official Bankr website."
     );
   }
@@ -633,8 +747,8 @@ function scoreRepository(
     )
   ) {
     addEvidence(
-      15,
-      "Official project domain was found by GitHub repository search."
+      5,
+      "Official project domain appeared in searchable repository metadata."
     );
   }
 
@@ -644,7 +758,7 @@ function scoreRepository(
     )
   ) {
     addEvidence(
-      10,
+      5,
       "Repository matched the project-name GitHub search."
     );
   }
@@ -660,8 +774,8 @@ function scoreRepository(
       "primary-candidate"
   ) {
     addEvidence(
-      10,
-      "Repository metadata suggests a primary project repository."
+      5,
+      "Repository metadata is consistent with a primary project repository."
     );
   }
 
@@ -692,8 +806,34 @@ function scoreRepository(
     repository.stars >= 5
   ) {
     addEvidence(
-      5,
+      3,
       "Repository has observable public adoption."
+    );
+  }
+
+  if (
+    exactRepositoryIdentity &&
+    exactOwnerIdentity
+  ) {
+    addEvidence(
+      15,
+      "Repository and owner both exactly match the project identity."
+    );
+  } else if (
+    exactRepositoryIdentity &&
+    homepageMatchesWebsite
+  ) {
+    addEvidence(
+      15,
+      "Exact repository identity is corroborated by the official website."
+    );
+  } else if (
+    containedRepositoryIdentity &&
+    exactOwnerIdentity
+  ) {
+    addEvidence(
+      10,
+      "Matching repository family is owned by the exact project identity."
     );
   }
 
@@ -718,7 +858,7 @@ function scoreRepository(
       "component"
   ) {
     addEvidence(
-      -15,
+      -20,
       "Repository appears to be a component rather than the primary project."
     );
   }
@@ -730,7 +870,7 @@ function scoreRepository(
       "website"
   ) {
     addEvidence(
-      -35,
+      -40,
       "Repository appears to contain documentation or a website."
     );
   }
@@ -739,7 +879,7 @@ function scoreRepository(
     repository.fork
   ) {
     addEvidence(
-      -40,
+      -60,
       "Forked repositories are not treated as primary project evidence."
     );
   }
@@ -757,15 +897,31 @@ function scoreRepository(
   const normalizedScore =
     Math.max(
       0,
+
       Math.min(
         100,
         score
       )
     );
 
+  const strongProjectEvidence =
+    homepageMatchesWebsite ||
+    (
+      exactRepositoryIdentity &&
+      exactOwnerIdentity
+    );
+
+  const disqualified =
+    repository.fork ||
+    repository.archived ||
+    repository.disabled;
+
   const status =
     getMatchStatus(
-      normalizedScore
+      normalizedScore,
+      role,
+      strongProjectEvidence,
+      disqualified
     );
 
   return {
@@ -783,7 +939,9 @@ function scoreRepository(
         "probable",
 
     matchedBy:
-      [...matchedBy].sort(),
+      [
+        ...matchedBy
+      ].sort(),
 
     reasons:
       reasons.length > 0
@@ -792,6 +950,121 @@ function scoreRepository(
             "No meaningful project identity signals were found."
           ]
   };
+}
+
+function applyAmbiguityPenalty(
+  candidate:
+    Pick<
+      BankrCandidate,
+      "name" |
+      "bankrSlug" |
+      "website"
+    >,
+
+  matches:
+    BankrGlobalGitHubRepositoryMatch[]
+): BankrGlobalGitHubRepositoryMatch[] {
+  const contenders =
+    matches
+      .filter(
+        (match) =>
+          match.score >= 55 &&
+          match.role ===
+            "primary-candidate" &&
+          !match.fork &&
+          !match.archived &&
+          !match.disabled
+      )
+      .sort(
+        (
+          left,
+          right
+        ) =>
+          right.score -
+          left.score
+      );
+
+  const topScore =
+    contenders[0]
+      ?.score;
+
+  if (
+    topScore ===
+      undefined
+  ) {
+    return matches;
+  }
+
+  const ambiguous =
+    contenders.filter(
+      (match) =>
+        topScore -
+          match.score <=
+        10
+    );
+
+  if (
+    ambiguous.length < 2
+  ) {
+    return matches;
+  }
+
+  const ambiguousKeys =
+    new Set(
+      ambiguous.map(
+        (match) =>
+          match.fullName
+            .toLowerCase()
+      )
+    );
+
+  return matches.map(
+    (match) => {
+      if (
+        !ambiguousKeys.has(
+          match.fullName
+            .toLowerCase()
+        )
+      ) {
+        return match;
+      }
+
+      const nextScore =
+        Math.max(
+          0,
+          match.score -
+            15
+        );
+
+      const status =
+        getMatchStatus(
+          nextScore,
+          match.role,
+          false,
+          match.fork ||
+            match.archived ||
+            match.disabled
+        );
+
+      return {
+        ...match,
+
+        score:
+          nextScore,
+
+        status,
+
+        probable:
+          false,
+
+        reasons: [
+          ...match.reasons,
+
+          "-15: Multiple similarly ranked repositories create unresolved ownership ambiguity."
+        ]
+      };
+    }
+  );
 }
 
 function sortMatches(
@@ -910,7 +1183,7 @@ export function rankBankrGlobalGitHubRepositories(
         BankrGlobalGitHubSearchSource[];
     }>
 ): BankrGlobalGitHubRepositoryMatch[] {
-  return sortMatches(
+  const scored =
     collected.map(
       (
         {
@@ -923,6 +1196,12 @@ export function rankBankrGlobalGitHubRepositories(
           repository,
           matchedBy
         )
+    );
+
+  return sortMatches(
+    applyAmbiguityPenalty(
+      candidate,
+      scored
     )
   )
     .slice(
