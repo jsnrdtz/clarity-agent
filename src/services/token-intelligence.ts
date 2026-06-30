@@ -51,10 +51,22 @@ export type TokenScoreCategory =
   | "marketIntegrity"
   | "identityTransparency";
 
+export type TokenCategoryConfidence =
+  | "high"
+  | "medium"
+  | "low"
+  | "none";
+
 export type TokenCategoryScore = {
   score: number | null;
   weight: number;
   available: boolean;
+
+  dataCoverage: number;
+
+  confidence:
+    TokenCategoryConfidence;
+
   evidence: string[];
 };
 
@@ -396,6 +408,21 @@ const TokenIntelligenceReportSchema =
                             available:
                               z.boolean(),
 
+                            dataCoverage:
+                              z.number()
+                                .min(0)
+                                .max(100),
+
+                            confidence:
+                              z.enum(
+                                [
+                                  "high",
+                                  "medium",
+                                  "low",
+                                  "none"
+                                ]
+                              ),
+
                             evidence:
                               z.array(
                                 z.string()
@@ -462,6 +489,30 @@ function roundScore(
   );
 }
 
+function getCategoryConfidence(
+  dataCoverage: number
+): TokenCategoryConfidence {
+  if (
+    dataCoverage <= 0
+  ) {
+    return "none";
+  }
+
+  if (
+    dataCoverage >= 85
+  ) {
+    return "high";
+  }
+
+  if (
+    dataCoverage >= 60
+  ) {
+    return "medium";
+  }
+
+  return "low";
+}
+
 function logarithmicScore(
   value: number,
   target: number
@@ -508,6 +559,12 @@ function createUnavailableCategory(
     available:
       false,
 
+    dataCoverage:
+      0,
+
+    confidence:
+      "none",
+
     evidence
   };
 }
@@ -519,8 +576,16 @@ function createAvailableCategory(
   score: number,
 
   evidence:
-    string[]
+    string[],
+
+  dataCoverage =
+    100
 ): TokenCategoryScore {
+  const normalizedCoverage =
+    roundScore(
+      dataCoverage
+    );
+
   return {
     score:
       roundScore(
@@ -534,6 +599,14 @@ function createAvailableCategory(
 
     available:
       true,
+
+    dataCoverage:
+      normalizedCoverage,
+
+    confidence:
+      getCategoryConfidence(
+        normalizedCoverage
+      ),
 
     evidence
   };
@@ -745,10 +818,49 @@ function calculateContractSafety(
     }
   }
 
+  const knownFlags =
+    Object
+      .values(
+        security.flags
+      )
+      .filter(
+        (value) =>
+          value !== null
+      )
+      .length;
+
+  const knownTaxes =
+    [
+      security.buyTaxPct,
+      security.sellTaxPct
+    ]
+      .filter(
+        (value) =>
+          value !== null
+      )
+      .length;
+
+  const totalSecurityFields =
+    16;
+
+  const knownSecurityFields =
+    knownFlags +
+    knownTaxes;
+
+  const dataCoverage =
+    knownSecurityFields /
+    totalSecurityFields *
+    100;
+
+  evidence.unshift(
+    `Security field coverage: ${knownFlags}/14 flags and ${knownTaxes}/2 taxes.`
+  );
+
   return createAvailableCategory(
     "contractSafety",
     score,
-    evidence
+    evidence,
+    dataCoverage
   );
 }
 
@@ -1292,7 +1404,24 @@ function calculateScoreBreakdown(
 
   const dataCoverage =
     roundScore(
-      availableWeight
+      Object
+        .values(
+          categories
+        )
+        .reduce(
+          (
+            total,
+            category
+          ) =>
+            total +
+            category.weight *
+            (
+              category.dataCoverage /
+              100
+            ),
+
+          0
+        )
     );
 
   const confidence =

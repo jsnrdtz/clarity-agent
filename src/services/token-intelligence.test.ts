@@ -1314,3 +1314,213 @@ test(
     }
   }
 );
+test(
+  "separates contract risk score from security evidence coverage",
+  async () => {
+    const token:
+      TokenReference = {
+        chainId:
+          "base",
+
+        address:
+          TOKEN_ADDRESS
+      };
+
+    const identity =
+      createTokenIdentity(
+        token
+      );
+
+    const dex:
+      TokenDexSnapshot = {
+      provider:
+        "dexscreener",
+
+      status:
+        "no-pairs",
+
+      pools:
+        0,
+
+      primaryPair:
+        null,
+
+      totalLiquidityUsd:
+        null,
+
+      volume24hUsd:
+        null,
+
+      buys24h:
+        null,
+
+      sells24h:
+        null,
+
+      priceUsd:
+        null,
+
+      priceChange24hPct:
+        null,
+
+      marketCapUsd:
+        null,
+
+      fdvUsd:
+        null,
+
+      pairCreatedAt:
+        null,
+
+      error:
+        null
+    };
+
+    const security:
+      TokenSecuritySnapshot = {
+      provider:
+        "goplus",
+
+      status:
+        "available",
+
+      flags: {
+        isOpenSource:
+          true,
+
+        isProxy:
+          false,
+
+        isHoneypot:
+          false,
+
+        cannotBuy:
+          false,
+
+        cannotSellAll:
+          false,
+
+        isMintable:
+          false,
+
+        hiddenOwner:
+          false,
+
+        ownerChangeBalance:
+          false,
+
+        selfDestruct:
+          false,
+
+        externalCall:
+          null,
+
+        transferPausable:
+          false,
+
+        isBlacklisted:
+          false,
+
+        slippageModifiable:
+          false,
+
+        antiWhaleModifiable:
+          false
+      },
+
+      buyTaxPct:
+        0,
+
+      sellTaxPct:
+        null,
+
+      holderCountReported:
+        1_000,
+
+      creatorAddress:
+        `0x${"12".repeat(20)}`,
+
+      ownerAddress:
+        `0x${"34".repeat(20)}`,
+
+      risks:
+        [],
+
+      error:
+        null
+    };
+
+    const report =
+      await generateTokenIntelligenceReport(
+        createRegistry(),
+        {
+          fetchDex:
+            async () =>
+              new Map(
+                [
+                  [
+                    identity,
+                    dex
+                  ]
+                ]
+              ),
+
+          fetchSecurity:
+            async () =>
+              new Map(
+                [
+                  [
+                    identity,
+                    security
+                  ]
+                ]
+              ),
+
+          now:
+            () =>
+              "2026-06-30T00:00:00.000Z"
+        }
+      );
+
+    const entry =
+      report.tokens[0];
+
+    assert.ok(entry);
+
+    const contractSafety =
+      entry.scores
+        .categories
+        .contractSafety;
+
+    assert.equal(
+      contractSafety.score,
+      100
+    );
+
+    assert.equal(
+      contractSafety.dataCoverage,
+      88
+    );
+
+    assert.equal(
+      contractSafety.confidence,
+      "high"
+    );
+
+    assert.equal(
+      entry.scores.dataCoverage,
+      23
+    );
+
+    assert.equal(
+      entry.scores.confidence,
+      "low"
+    );
+
+    assert.match(
+      contractSafety.evidence[0] ??
+        "",
+      /13\/14 flags and 1\/2 taxes/u
+    );
+  }
+);
