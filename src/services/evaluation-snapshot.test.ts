@@ -12,6 +12,7 @@ import type {
 import {
   getAgentEvaluation,
   resolveAgentEvaluation,
+  resolveRecentAgentEvaluation,
   type AgentEvaluationSnapshot
 } from "./evaluation-snapshot.js";
 
@@ -438,6 +439,158 @@ test(
     assert.equal(
       liveEvaluationCalls,
       1
+    );
+  }
+);
+
+
+test(
+  "returns a recent snapshot without starting a live evaluation",
+  async () => {
+    const snapshotEvaluation =
+      createEvaluation(
+        "snapshot-agent"
+      );
+
+    let liveEvaluationCalls =
+      0;
+
+    const result =
+      await resolveRecentAgentEvaluation(
+        "aeon",
+        {
+          loadSnapshot:
+            async () => ({
+              schemaVersion:
+                "1.0",
+
+              savedAt:
+                "2026-06-27T05:30:00.000Z",
+
+              evaluation:
+                snapshotEvaluation
+            }),
+
+          resolveLiveEvaluation:
+            async () => {
+              liveEvaluationCalls +=
+                1;
+
+              return {
+                evaluation:
+                  createEvaluation(
+                    "live-agent"
+                  ),
+
+                delivery: {
+                  source:
+                    "live",
+
+                  stale:
+                    false,
+
+                  snapshotSavedAt:
+                    null,
+
+                  liveError:
+                    null
+                }
+              };
+            },
+
+          now:
+            () =>
+              new Date(
+                "2026-06-27T06:00:00.000Z"
+              ).getTime(),
+
+          maxAgeMs:
+            6 * 60 * 60 * 1000
+        }
+      );
+
+    assert.strictEqual(
+      result.evaluation,
+      snapshotEvaluation
+    );
+
+    assert.equal(
+      result.delivery.source,
+      "snapshot"
+    );
+
+    assert.equal(
+      result.delivery.stale,
+      false
+    );
+
+    assert.equal(
+      result.delivery.snapshotSavedAt,
+      "2026-06-27T05:30:00.000Z"
+    );
+
+    assert.equal(
+      liveEvaluationCalls,
+      0
+    );
+  }
+);
+
+test(
+  "falls back to a snapshot when live evaluation times out",
+  async () => {
+    const snapshotEvaluation =
+      createEvaluation(
+        "snapshot-agent"
+      );
+
+    const result =
+      await resolveAgentEvaluation(
+        "aeon",
+        {
+          buildLiveEvaluation:
+            async () =>
+              new Promise<AgentEvaluation>(
+                () => undefined
+              ),
+
+          saveSnapshot:
+            async (
+              evaluation
+            ) =>
+              createSnapshot(
+                evaluation
+              ),
+
+          loadSnapshot:
+            async () =>
+              createSnapshot(
+                snapshotEvaluation
+              ),
+
+          liveTimeoutMs:
+            5
+        }
+      );
+
+    assert.strictEqual(
+      result.evaluation,
+      snapshotEvaluation
+    );
+
+    assert.equal(
+      result.delivery.source,
+      "snapshot"
+    );
+
+    assert.equal(
+      result.delivery.stale,
+      true
+    );
+
+    assert.match(
+      result.delivery.liveError ?? "",
+      /timed out after 5 ms/
     );
   }
 );

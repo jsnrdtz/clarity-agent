@@ -16,7 +16,7 @@ type PublicAsset = {
   cacheControl: string;
 };
 
-const PUBLIC_ASSETS:
+const STATIC_PUBLIC_ASSETS:
   Record<
     string,
     PublicAsset
@@ -52,15 +52,62 @@ const PUBLIC_ASSETS:
 
       cacheControl:
         "public, max-age=300"
+    },
+
+    "/agent.js": {
+      fileName:
+        "agent.js",
+
+      contentType:
+        "text/javascript; charset=utf-8",
+
+      cacheControl:
+        "public, max-age=300"
     }
   };
+
+const AGENT_PAGE_PATTERN =
+  /^\/agents\/[a-z0-9][a-z0-9._-]*\/?$/i;
+
+function resolvePublicAsset(
+  pathname: string
+): PublicAsset | null {
+  const staticAsset =
+    STATIC_PUBLIC_ASSETS[
+      pathname
+    ];
+
+  if (staticAsset) {
+    return staticAsset;
+  }
+
+  if (
+    AGENT_PAGE_PATTERN.test(
+      pathname
+    )
+  ) {
+    return {
+      fileName:
+        "agent.html",
+
+      contentType:
+        "text/html; charset=utf-8",
+
+      cacheControl:
+        "no-cache"
+    };
+  }
+
+  return null;
+}
 
 export function isPublicSitePath(
   pathname: string
 ): boolean {
-  return Object.hasOwn(
-    PUBLIC_ASSETS,
-    pathname
+  return (
+    resolvePublicAsset(
+      pathname
+    ) !== null
   );
 }
 
@@ -69,7 +116,9 @@ export async function servePublicSite(
   response: ServerResponse
 ): Promise<boolean> {
   const asset =
-    PUBLIC_ASSETS[pathname];
+    resolvePublicAsset(
+      pathname
+    );
 
   if (!asset) {
     return false;

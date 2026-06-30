@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+
+  <meta
+    name="description"
+    content="Clarity agent intelligence profile."
+  >
+
+  <meta
+    name="theme-color"
+    content="#070a08"
+  >
+
+  <title>Agent Intelligence — Clarity</title>
+
+  <link
+    rel="stylesheet"
+    href="/styles.css"
+  >
+
+  <script
+    src="/agent.js"
+    defer
+  ></script>
+</head>
+
+<body>
+  <div
+    class="page-grid"
+    aria-hidden="true"
+  ></div>
+
+  <header class="site-header">
+    <a
+      class="brand"
+      href="/"
+      aria-label="Clarity home"
+    >
+      <span class="brand-mark">C</span>
+
+      <span>
+        <strong>CLARITY</strong>
+        <small>INTELLIGENCE TERMINAL</small>
+      </span>
+    </a>
+
+    <nav
+      class="site-nav"
+      aria-label="Agent navigation"
+    >
+      <a href="/">Index</a>
+      <a href="/#intelligence">Intelligence</a>
+      <a href="/#methodology">Methodology</a>
+      <a href="/openapi.json">API</a>
+    </nav>
+
+    <div
+      class="system-status"
+      id="agentSystemStatus"
+    >
+      <span class="status-dot"></span>
+      <span id="agentSystemStatusText">LOADING AGENT</span>
+    </div>
+  </header>
+
+  <main
+    class="agent-page-shell"
+    id="agentPage"
+    aria-live="polite"
+    aria-busy="true"
+  >
+    <section class="agent-page-loading">
+      <span class="eyebrow">AGENT INTELLIGENCE</span>
+
+      <h1>Loading evaluation...</h1>
+
+      <p>
+        Resolving score, evidence and repository relationships.
+      </p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="brand footer-brand">
+      <span class="brand-mark">C</span>
+
+      <span>
+        <strong>CLARITY</strong>
+        <small>CLARITY LABS</small>
+      </span>
+    </div>
+
+    <p>
+      Independent intelligence for the AI agent economy.
+    </p>
+
+    <div class="footer-links">
+      <a href="/">Index</a>
+      <a href="/api/v1/ranking">Ranking JSON</a>
+      <a href="/openapi.json">OpenAPI</a>
+    </div>
+  </footer>
+</body>
+</html>

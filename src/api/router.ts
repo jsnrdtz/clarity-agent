@@ -41,7 +41,7 @@ import {
 } from "../data/agent-registry.js";
 
 import {
-  resolveAgentEvaluation
+  resolveRecentAgentEvaluation
 } from "../services/evaluation-snapshot.js";
 
 import {
@@ -446,7 +446,7 @@ async function routeGetRequest(
 
   if (evaluationMatch?.[1]) {
     const resolved =
-      await resolveAgentEvaluation(
+      await resolveRecentAgentEvaluation(
         decodePathValue(
           evaluationMatch[1]
         )

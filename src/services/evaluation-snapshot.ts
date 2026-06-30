@@ -15,6 +15,7 @@ import {
 } from "node:path";
 
 import {
+  ClarityError,
   isClarityError
 } from "../errors/clarity-error.js";
 
@@ -53,6 +54,8 @@ export type EvaluationSnapshotDependencies = {
   loadSnapshot: (
     agentSlug: string
   ) => Promise<AgentEvaluationSnapshot | null>;
+
+  liveTimeoutMs: number;
 };
 
 function getSnapshotDirectory(): string {
@@ -247,6 +250,146 @@ export async function loadAgentEvaluationSnapshot(
   return parsed;
 }
 
+const DEFAULT_LIVE_EVALUATION_TIMEOUT_MS =
+  10_000;
+
+function getLiveEvaluationTimeoutMs():
+number {
+  const rawValue =
+    process.env
+      .CLARITY_LIVE_EVALUATION_TIMEOUT_MS;
+
+  if (!rawValue) {
+    return (
+      DEFAULT_LIVE_EVALUATION_TIMEOUT_MS
+    );
+  }
+
+  const parsedValue =
+    Number(rawValue);
+
+  if (
+    !Number.isInteger(parsedValue) ||
+    parsedValue < 1
+  ) {
+    return (
+      DEFAULT_LIVE_EVALUATION_TIMEOUT_MS
+    );
+  }
+
+  return parsedValue;
+}
+
+function createLiveEvaluationTimeoutError(
+  timeoutMs: number
+): ClarityError {
+  return new ClarityError(
+    "GITHUB_UNAVAILABLE",
+
+    `Live GitHub evaluation timed out after ${timeoutMs} ms.`,
+
+    503,
+
+    {
+      retryable:
+        true,
+
+      details: {
+        timeoutMs
+      }
+    }
+  );
+}
+
+async function buildLiveEvaluationWithTimeout(
+  agentSlug: string,
+
+  dependencies:
+    EvaluationSnapshotDependencies
+): Promise<AgentEvaluation> {
+  const timeoutMs =
+    (
+      Number.isInteger(
+        dependencies.liveTimeoutMs
+      ) &&
+      dependencies.liveTimeoutMs > 0
+    )
+      ? dependencies.liveTimeoutMs
+      : DEFAULT_LIVE_EVALUATION_TIMEOUT_MS;
+
+  return new Promise<AgentEvaluation>(
+    (
+      resolve,
+      reject
+    ) => {
+      let settled =
+        false;
+
+      const timer =
+        setTimeout(
+          () => {
+            if (settled) {
+              return;
+            }
+
+            settled =
+              true;
+
+            reject(
+              createLiveEvaluationTimeoutError(
+                timeoutMs
+              )
+            );
+          },
+
+          timeoutMs
+        );
+
+      timer.unref();
+
+      void dependencies
+        .buildLiveEvaluation(
+          agentSlug
+        )
+        .then(
+          (evaluation) => {
+            if (settled) {
+              return;
+            }
+
+            settled =
+              true;
+
+            clearTimeout(
+              timer
+            );
+
+            resolve(
+              evaluation
+            );
+          },
+
+          (error: unknown) => {
+            if (settled) {
+              return;
+            }
+
+            settled =
+              true;
+
+            clearTimeout(
+              timer
+            );
+
+            reject(
+              error
+            );
+          }
+        );
+    }
+  );
+}
+
 const defaultDependencies:
 EvaluationSnapshotDependencies = {
   buildLiveEvaluation:
@@ -256,7 +399,10 @@ EvaluationSnapshotDependencies = {
     saveAgentEvaluationSnapshot,
 
   loadSnapshot:
-    loadAgentEvaluationSnapshot
+    loadAgentEvaluationSnapshot,
+
+  liveTimeoutMs:
+    getLiveEvaluationTimeoutMs()
 };
 
 function resolveDependencies(
@@ -282,10 +428,10 @@ export async function resolveAgentEvaluation(
 
   try {
     const evaluation =
-      await dependencies
-        .buildLiveEvaluation(
-          agentSlug
-        );
+      await buildLiveEvaluationWithTimeout(
+        agentSlug,
+        dependencies
+      );
 
     let snapshotSavedAt:
       string | null = null;
@@ -452,12 +598,12 @@ function isRecentSnapshot(
   );
 }
 
-export async function getAgentEvaluation(
+export async function resolveRecentAgentEvaluation(
   agentSlug: string,
 
   dependencyOverrides:
     Partial<RecentEvaluationDependencies> = {}
-): Promise<AgentEvaluation> {
+): Promise<ResolvedAgentEvaluation> {
   const dependencies =
     resolveRecentEvaluationDependencies(
       dependencyOverrides
@@ -478,18 +624,47 @@ export async function getAgentEvaluation(
         dependencies.maxAgeMs
       )
     ) {
-      return snapshot.evaluation;
+      return {
+        evaluation:
+          snapshot.evaluation,
+
+        delivery: {
+          source:
+            "snapshot",
+
+          stale:
+            false,
+
+          snapshotSavedAt:
+            snapshot.savedAt,
+
+          liveError:
+            null
+        }
+      };
     }
   } catch {
     // Snapshot storage is an optional
     // read-through optimization.
   }
 
+  return dependencies
+    .resolveLiveEvaluation(
+      agentSlug
+    );
+}
+
+export async function getAgentEvaluation(
+  agentSlug: string,
+
+  dependencyOverrides:
+    Partial<RecentEvaluationDependencies> = {}
+): Promise<AgentEvaluation> {
   const resolved =
-    await dependencies
-      .resolveLiveEvaluation(
-        agentSlug
-      );
+    await resolveRecentAgentEvaluation(
+      agentSlug,
+      dependencyOverrides
+    );
 
   return resolved.evaluation;
 }

@@ -354,15 +354,13 @@ function createRankedCard(
           </div>
         </div>
 
-        <button
+        <a
           class="agent-details-button"
-          type="button"
-          data-agent-slug="${escapeHtml(entry.agent.slug)}"
-          data-agent-name="${escapeHtml(entry.agent.name)}"
+          href="/agents/${encodeURIComponent(entry.agent.slug)}"
           aria-label="View ${escapeHtml(entry.agent.name)} intelligence"
         >
           ↗
-        </button>
+        </a>
       </div>
     </article>
   `;
@@ -395,15 +393,13 @@ function createUnrankedCard(
         GitHub Score:
         <strong>${escapeHtml(entry.githubScore)}</strong>
 
-        <button
+        <a
           class="agent-details-button"
-          type="button"
-          data-agent-slug="${escapeHtml(entry.agent.slug)}"
-          data-agent-name="${escapeHtml(entry.agent.name)}"
+          href="/agents/${encodeURIComponent(entry.agent.slug)}"
           aria-label="View ${escapeHtml(entry.agent.name)} intelligence"
         >
           ↗
-        </button>
+        </a>
       </div>
     </article>
   `;

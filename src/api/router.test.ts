@@ -1267,3 +1267,99 @@ test(
     );
   }
 );
+
+test(
+  "serves permanent public agent pages",
+  async () => {
+    const response =
+      await fetch(
+        `${baseUrl}/agents/aeon`
+      );
+
+    const body =
+      await response.text();
+
+    assert.equal(
+      response.status,
+      200
+    );
+
+    assert.match(
+      response.headers.get(
+        "content-type"
+      ) ?? "",
+      /text\/html/
+    );
+
+    assert.match(
+      body,
+      /id="agentPage"/
+    );
+
+    assert.match(
+      body,
+      /src="\/agent\.js"/
+    );
+  }
+);
+
+test(
+  "serves the public agent page script",
+  async () => {
+    const response =
+      await fetch(
+        `${baseUrl}/agent.js`
+      );
+
+    const body =
+      await response.text();
+
+    assert.equal(
+      response.status,
+      200
+    );
+
+    assert.match(
+      response.headers.get(
+        "content-type"
+      ) ?? "",
+      /javascript/
+    );
+
+    assert.match(
+      body,
+      /api\/v1\/evaluate/
+    );
+
+    assert.match(
+      body,
+      /api\/v1\/ranking/
+    );
+  }
+);
+
+test(
+  "rejects unsupported methods for public agent pages",
+  async () => {
+    const response =
+      await fetch(
+        `${baseUrl}/agents/aeon`,
+        {
+          method:
+            "POST"
+        }
+      );
+
+    assert.equal(
+      response.status,
+      405
+    );
+
+    assert.equal(
+      response.headers.get(
+        "allow"
+      ),
+      "GET, OPTIONS"
+    );
+  }
+);
