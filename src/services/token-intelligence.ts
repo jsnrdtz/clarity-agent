@@ -1856,13 +1856,17 @@ function capHistoricalConfidence(
     return scores;
   }
 
+  const ageHours =
+    security.fallbackAgeHours ??
+    0;
+
   const contractSafety =
     scores.categories
       .contractSafety;
 
-  const ageHours =
-    security.fallbackAgeHours ??
-    0;
+  const distribution =
+    scores.categories
+      .distribution;
 
   return {
     ...scores,
@@ -1890,7 +1894,26 @@ function capHistoricalConfidence(
 
           `Contract evidence uses a historical snapshot ${ageHours.toFixed(2)} hours old.`
         ]
-      }
+      },
+
+      distribution:
+        distribution.available
+          ? {
+              ...distribution,
+
+              confidence:
+                distribution.confidence ===
+                  "high"
+                  ? "medium"
+                  : distribution.confidence,
+
+              evidence: [
+                ...distribution.evidence,
+
+                `Holder distribution uses a historical snapshot ${ageHours.toFixed(2)} hours old.`
+              ]
+            }
+          : distribution
     }
   };
 }
@@ -2007,6 +2030,19 @@ function applyHistoricalSecurityFallbacks(
     if (
       liveSnapshot.status !==
         "unavailable"
+    ) {
+      snapshots.set(
+        identity,
+        annotatedLive
+      );
+
+      continue;
+    }
+
+    if (
+      liveSnapshot
+        .unavailableReason !==
+      "record-not-returned-after-retries"
     ) {
       snapshots.set(
         identity,

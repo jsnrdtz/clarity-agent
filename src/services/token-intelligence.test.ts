@@ -3674,6 +3674,23 @@ test(
         .join(" "),
       /historical snapshot 24\.00 hours old/u
     );
+
+    assert.equal(
+      entry.scores
+        .categories
+        .distribution
+        .confidence,
+      "medium"
+    );
+
+    assert.match(
+      entry.scores
+        .categories
+        .distribution
+        .evidence
+        .join(" "),
+      /Holder distribution uses a historical snapshot 24\.00 hours old/u
+    );
   }
 );
 
@@ -3916,6 +3933,234 @@ test(
         .contractSafety
         .confidence,
       "high"
+    );
+  }
+);
+test(
+  "does not use historical fallback without exhausted live retries",
+  async () => {
+    const previousReport =
+      await createHistoricalFallbackReport(
+        "2026-07-01T00:00:00.000Z"
+      );
+
+    const unsupportedSecurity:
+      TokenSecuritySnapshot = {
+      ...createUnavailableFallbackSecurity(),
+
+      attempts:
+        0,
+
+      unavailableReason:
+        "unsupported-chain"
+    };
+
+    const report =
+      await generateTokenIntelligenceReport(
+        createRegistry(),
+        {
+          fetchDex:
+            async (
+              tokens
+            ) =>
+              createRetryTestDexSnapshots(
+                tokens
+              ),
+
+          fetchSecurity:
+            async (
+              tokens
+            ) =>
+              new Map(
+                tokens.map(
+                  (token) => [
+                    createTokenIdentity(
+                      token
+                    ),
+
+                    unsupportedSecurity
+                  ]
+                )
+              ),
+
+          previousReport,
+
+          fallbackMaxAgeHours:
+            72,
+
+          now:
+            () =>
+              "2026-07-02T00:00:00.000Z"
+        }
+      );
+
+    const entry =
+      report.tokens[0];
+
+    assert.ok(entry);
+
+    assert.equal(
+      entry.security.source,
+      "live"
+    );
+
+    assert.equal(
+      entry.security.status,
+      "unavailable"
+    );
+
+    assert.equal(
+      entry.security.attempts,
+      0
+    );
+
+    assert.equal(
+      entry.security
+        .unavailableReason,
+      "unsupported-chain"
+    );
+
+    assert.equal(
+      entry.holders.status,
+      "unavailable"
+    );
+  }
+);
+
+test(
+  "preserves the original collection time across chained fallbacks",
+  async () => {
+    const originalReport =
+      await createHistoricalFallbackReport(
+        "2026-07-01T00:00:00.000Z"
+      );
+
+    const firstFallback =
+      await generateTokenIntelligenceReport(
+        createRegistry(),
+        {
+          fetchDex:
+            async (
+              tokens
+            ) =>
+              createRetryTestDexSnapshots(
+                tokens
+              ),
+
+          fetchSecurity:
+            async (
+              tokens
+            ) =>
+              new Map(
+                tokens.map(
+                  (token) => [
+                    createTokenIdentity(
+                      token
+                    ),
+
+                    createUnavailableFallbackSecurity()
+                  ]
+                )
+              ),
+
+          previousReport:
+            originalReport,
+
+          fallbackMaxAgeHours:
+            72,
+
+          now:
+            () =>
+              "2026-07-02T00:00:00.000Z"
+        }
+      );
+
+    const firstEntry =
+      firstFallback.tokens[0];
+
+    assert.ok(firstEntry);
+
+    assert.equal(
+      firstEntry.security
+        .snapshotCollectedAt,
+      "2026-07-01T00:00:00.000Z"
+    );
+
+    assert.equal(
+      firstEntry.security
+        .fallbackAgeHours,
+      24
+    );
+
+    const secondFallback =
+      await generateTokenIntelligenceReport(
+        createRegistry(),
+        {
+          fetchDex:
+            async (
+              tokens
+            ) =>
+              createRetryTestDexSnapshots(
+                tokens
+              ),
+
+          fetchSecurity:
+            async (
+              tokens
+            ) =>
+              new Map(
+                tokens.map(
+                  (token) => [
+                    createTokenIdentity(
+                      token
+                    ),
+
+                    createUnavailableFallbackSecurity()
+                  ]
+                )
+              ),
+
+          previousReport:
+            firstFallback,
+
+          fallbackMaxAgeHours:
+            72,
+
+          now:
+            () =>
+              "2026-07-03T00:00:00.000Z"
+        }
+      );
+
+    const secondEntry =
+      secondFallback.tokens[0];
+
+    assert.ok(secondEntry);
+
+    assert.equal(
+      secondEntry.security.source,
+      "historical-fallback"
+    );
+
+    assert.equal(
+      secondEntry.security
+        .snapshotCollectedAt,
+      "2026-07-01T00:00:00.000Z"
+    );
+
+    assert.equal(
+      secondEntry.security
+        .fallbackAgeHours,
+      48
+    );
+
+    assert.match(
+      secondEntry.scores
+        .categories
+        .distribution
+        .evidence
+        .join(" "),
+      /historical snapshot 48\.00 hours old/u
     );
   }
 );
