@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: bankr-candidate-discovery
@@ -221,6 +222,51 @@ jobs:
             )
           );
           NODE
+
+      - name: Download previous token intelligence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          PREVIOUS_RUN_ID="$(
+            gh run list               --workflow bankr-candidates.yml               --branch main               --status success               --limit 1               --json databaseId               --jq '.[0].databaseId // empty'
+          )"
+
+          if [ -z "${PREVIOUS_RUN_ID}" ]; then
+            echo "No previous successful workflow run was found."
+            exit 0
+          fi
+
+          TEMP_DIRECTORY="$(
+            mktemp -d
+          )"
+
+          trap 'rm -rf "${TEMP_DIRECTORY}"' EXIT
+
+          if ! gh run download             "${PREVIOUS_RUN_ID}"             --name "bankr-candidates-${PREVIOUS_RUN_ID}"             --dir "${TEMP_DIRECTORY}"
+          then
+            echo "Previous artifact could not be downloaded."
+            exit 0
+          fi
+
+          PREVIOUS_REPORT="$(
+            find               "${TEMP_DIRECTORY}"               -type f               -path '*/token-intelligence/bankr-tokens.json'               -print               -quit
+          )"
+
+          if [ -z "${PREVIOUS_REPORT}" ]; then
+            echo "Previous token intelligence report was not found in the artifact."
+            exit 0
+          fi
+
+          mkdir -p             data/token-intelligence
+
+          cp             "${PREVIOUS_REPORT}"             data/token-intelligence/previous-bankr-tokens.json
+
+          echo             "CLARITY_PREVIOUS_TOKEN_INTELLIGENCE_REPORT_PATH=data/token-intelligence/previous-bankr-tokens.json"             >> "${GITHUB_ENV}"
+
+          echo             "Previous token intelligence loaded from run ${PREVIOUS_RUN_ID}."
 
       - name: Generate token intelligence
         shell: bash

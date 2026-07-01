@@ -174,6 +174,13 @@ export type TokenIntelligenceDependencies = {
   fetchHolders?:
     FetchTokenHolderSnapshots;
 
+  previousReport?:
+    TokenIntelligenceReport |
+    null;
+
+  fallbackMaxAgeHours?:
+    number;
+
   now?: () => string;
 };
 
@@ -184,6 +191,9 @@ export type RunTokenIntelligenceOptions =
 
     registryPath?: string;
     outputPath?: string;
+
+    previousReportPath?:
+      string;
   };
 
 const TokenIntelligenceReportSchema =
@@ -439,6 +449,9 @@ const TokenIntelligenceReportSchema =
         )
     }
   );
+
+const DEFAULT_SECURITY_FALLBACK_MAX_AGE_HOURS =
+  72;
 
 const CATEGORY_WEIGHTS:
   Record<
@@ -1811,6 +1824,293 @@ function normalizeHolderAddress(
     .toLowerCase();
 }
 
+function normalizeFallbackMaxAgeHours(
+  value:
+    number |
+    undefined
+): number {
+  if (
+    value === undefined ||
+    !Number.isFinite(
+      value
+    ) ||
+    value <= 0
+  ) {
+    return DEFAULT_SECURITY_FALLBACK_MAX_AGE_HOURS;
+  }
+
+  return value;
+}
+
+function capHistoricalConfidence(
+  scores:
+    TokenScoreBreakdown,
+
+  security:
+    TokenSecuritySnapshot
+): TokenScoreBreakdown {
+  if (
+    security.source !==
+    "historical-fallback"
+  ) {
+    return scores;
+  }
+
+  const contractSafety =
+    scores.categories
+      .contractSafety;
+
+  const ageHours =
+    security.fallbackAgeHours ??
+    0;
+
+  return {
+    ...scores,
+
+    confidence:
+      scores.confidence ===
+        "high"
+        ? "medium"
+        : scores.confidence,
+
+    categories: {
+      ...scores.categories,
+
+      contractSafety: {
+        ...contractSafety,
+
+        confidence:
+          contractSafety.confidence ===
+            "high"
+            ? "medium"
+            : contractSafety.confidence,
+
+        evidence: [
+          ...contractSafety.evidence,
+
+          `Contract evidence uses a historical snapshot ${ageHours.toFixed(2)} hours old.`
+        ]
+      }
+    }
+  };
+}
+
+function applyHistoricalSecurityFallbacks(
+  tokens:
+    TokenReference[],
+
+  liveSnapshots:
+    Map<
+      string,
+      TokenSecuritySnapshot
+    >,
+
+  previousReport:
+    TokenIntelligenceReport |
+    null |
+    undefined,
+
+  generatedAt:
+    string,
+
+  fallbackMaxAgeHours:
+    number |
+    undefined
+): Map<
+  string,
+  TokenSecuritySnapshot
+> {
+  const snapshots =
+    new Map<
+      string,
+      TokenSecuritySnapshot
+    >();
+
+  const currentTimestamp =
+    Date.parse(
+      generatedAt
+    );
+
+  const maximumAgeHours =
+    normalizeFallbackMaxAgeHours(
+      fallbackMaxAgeHours
+    );
+
+  const validatedPreviousReport =
+    previousReport
+      ? TokenIntelligenceReportSchema.parse(
+          previousReport
+        ) as TokenIntelligenceReport
+      : null;
+
+  const previousByIdentity =
+    new Map<
+      string,
+      TokenIntelligenceEntry
+    >();
+
+  for (
+    const entry
+    of validatedPreviousReport
+      ?.tokens ??
+      []
+  ) {
+    const identity =
+      createTokenIdentity(
+        {
+          chainId:
+            entry.token.chainId,
+
+          address:
+            entry.token.address
+        }
+      );
+
+    previousByIdentity.set(
+      identity,
+      entry
+    );
+  }
+
+  for (
+    const token
+    of tokens
+  ) {
+    const identity =
+      createTokenIdentity(
+        token
+      );
+
+    const liveSnapshot =
+      liveSnapshots.get(
+        identity
+      );
+
+    if (!liveSnapshot) {
+      continue;
+    }
+
+    const annotatedLive:
+      TokenSecuritySnapshot = {
+      ...liveSnapshot,
+
+      source:
+        "live",
+
+      snapshotCollectedAt:
+        generatedAt,
+
+      fallbackAgeHours:
+        null
+    };
+
+    if (
+      liveSnapshot.status !==
+        "unavailable"
+    ) {
+      snapshots.set(
+        identity,
+        annotatedLive
+      );
+
+      continue;
+    }
+
+    const previousEntry =
+      previousByIdentity.get(
+        identity
+      );
+
+    const previousSecurity =
+      previousEntry
+        ?.security;
+
+    if (
+      !previousEntry ||
+      previousSecurity
+        ?.status !==
+        "available"
+    ) {
+      snapshots.set(
+        identity,
+        annotatedLive
+      );
+
+      continue;
+    }
+
+    const snapshotCollectedAt =
+      previousSecurity
+        .snapshotCollectedAt ??
+      previousEntry
+        .collectedAt ??
+      validatedPreviousReport
+        ?.generatedAt ??
+      null;
+
+    const previousTimestamp =
+      snapshotCollectedAt
+        ? Date.parse(
+            snapshotCollectedAt
+          )
+        : Number.NaN;
+
+    const ageHours =
+      (
+        currentTimestamp -
+        previousTimestamp
+      ) /
+      3_600_000;
+
+    if (
+      !Number.isFinite(
+        currentTimestamp
+      ) ||
+      !Number.isFinite(
+        previousTimestamp
+      ) ||
+      ageHours < 0 ||
+      ageHours >
+        maximumAgeHours
+    ) {
+      snapshots.set(
+        identity,
+        annotatedLive
+      );
+
+      continue;
+    }
+
+    snapshots.set(
+      identity,
+      {
+        ...previousSecurity,
+
+        source:
+          "historical-fallback",
+
+        snapshotCollectedAt,
+
+        fallbackAgeHours:
+          Math.round(
+            ageHours *
+            10_000
+          ) /
+          10_000,
+
+        attempts:
+          liveSnapshot
+            .attempts,
+
+        unavailableReason:
+          null
+      }
+    );
+  }
+
+  return snapshots;
+}
+
 function createGoPlusHolderSnapshots(
   tokens:
     TokenReference[],
@@ -2231,7 +2531,7 @@ export async function generateTokenIntelligenceReport(
 
   const [
     dexSnapshots,
-    securitySnapshots
+    liveSecuritySnapshots
   ] = await Promise.all(
     [
       fetchDex(
@@ -2243,6 +2543,15 @@ export async function generateTokenIntelligenceReport(
       )
     ]
   );
+
+  const securitySnapshots =
+    applyHistoricalSecurityFallbacks(
+      tokens,
+      liveSecuritySnapshots,
+      dependencies.previousReport,
+      generatedAt,
+      dependencies.fallbackMaxAgeHours
+    );
 
   const holderSnapshots =
     dependencies.fetchHolders
@@ -2337,12 +2646,16 @@ export async function generateTokenIntelligenceReport(
             holders,
 
             scores:
-              calculateScoreBreakdown(
-                agent,
-                dex,
-                security,
-                holders,
-                generatedAt
+              capHistoricalConfidence(
+                calculateScoreBreakdown(
+                  agent,
+                  dex,
+                  security,
+                  holders,
+                  generatedAt
+                ),
+
+                security
               ),
 
             collectedAt:
@@ -2474,6 +2787,52 @@ string {
   );
 }
 
+export function getPreviousTokenIntelligenceReportPath():
+string | null {
+  const configured =
+    process.env
+      .CLARITY_PREVIOUS_TOKEN_INTELLIGENCE_REPORT_PATH
+      ?.trim();
+
+  return configured ||
+    null;
+}
+
+export function getSecurityFallbackMaxAgeHours():
+number {
+  const configured =
+    process.env
+      .CLARITY_TOKEN_SECURITY_FALLBACK_MAX_AGE_HOURS;
+
+  if (!configured) {
+    return DEFAULT_SECURITY_FALLBACK_MAX_AGE_HOURS;
+  }
+
+  return normalizeFallbackMaxAgeHours(
+    Number(
+      configured
+    )
+  );
+}
+
+export async function loadTokenIntelligenceReport(
+  inputPath: string
+): Promise<
+  TokenIntelligenceReport
+> {
+  const content =
+    await readFile(
+      inputPath,
+      "utf8"
+    );
+
+  return TokenIntelligenceReportSchema.parse(
+    JSON.parse(
+      content
+    )
+  ) as TokenIntelligenceReport;
+}
+
 export async function loadAutomaticAgentRegistry(
   inputPath =
     getAutomaticAgentRegistryPath()
@@ -2561,6 +2920,20 @@ export async function runTokenIntelligence(
       options.registryPath
     );
 
+  const previousReportPath =
+    options.previousReportPath ??
+    getPreviousTokenIntelligenceReportPath();
+
+  const previousReport =
+    options.previousReport ??
+    (
+      previousReportPath
+        ? await loadTokenIntelligenceReport(
+            previousReportPath
+          )
+        : null
+    );
+
   const report =
     await generateTokenIntelligenceReport(
       registry,
@@ -2573,6 +2946,12 @@ export async function runTokenIntelligence(
 
         fetchHolders:
           options.fetchHolders,
+
+        previousReport,
+
+        fallbackMaxAgeHours:
+          options.fallbackMaxAgeHours ??
+          getSecurityFallbackMaxAgeHours(),
 
         now:
           options.now

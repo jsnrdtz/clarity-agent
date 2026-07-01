@@ -102,6 +102,18 @@ export type TokenSecuritySnapshot = {
   provider: "goplus";
   status: TokenDataStatus;
 
+  source?:
+    | "live"
+    | "historical-fallback";
+
+  snapshotCollectedAt?:
+    string |
+    null;
+
+  fallbackAgeHours?:
+    number |
+    null;
+
   attempts?:
     number;
 
