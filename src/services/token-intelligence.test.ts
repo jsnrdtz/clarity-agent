@@ -2605,3 +2605,734 @@ test(
     );
   }
 );
+test(
+  "retries empty GoPlus records and preserves attempt metadata",
+  async () => {
+    let requestCount =
+      0;
+
+    const sleepCalls:
+      number[] =
+      [];
+
+    const fetcher:
+      typeof fetch =
+      async () => {
+        requestCount +=
+          1;
+
+        const result =
+          requestCount < 3
+            ? {}
+            : {
+                [
+                  TOKEN_ADDRESS
+                    .toLowerCase()
+                ]: {
+                  is_open_source:
+                    "1",
+
+                  is_honeypot:
+                    "0",
+
+                  holder_count:
+                    "321"
+                }
+              };
+
+        return new Response(
+          JSON.stringify(
+            {
+              code:
+                1,
+
+              message:
+                "OK",
+
+              result
+            }
+          ),
+
+          {
+            status:
+              200,
+
+            headers: {
+              "Content-Type":
+                "application/json"
+            }
+          }
+        );
+      };
+
+    const token:
+      TokenReference = {
+        chainId:
+          "base",
+
+        address:
+          TOKEN_ADDRESS
+      };
+
+    const snapshots =
+      await fetchGoPlusSecuritySnapshots(
+        [
+          token
+        ],
+        {
+          fetch:
+            fetcher,
+
+          requestIntervalMs:
+            11,
+
+          sleep:
+            async (
+              milliseconds
+            ) => {
+              sleepCalls.push(
+                milliseconds
+              );
+            }
+        }
+      );
+
+    const snapshot =
+      snapshots.get(
+        createTokenIdentity(
+          token
+        )
+      );
+
+    assert.ok(snapshot);
+
+    assert.equal(
+      requestCount,
+      3
+    );
+
+    assert.deepEqual(
+      sleepCalls,
+      [
+        11,
+        11
+      ]
+    );
+
+    assert.equal(
+      snapshot.status,
+      "available"
+    );
+
+    assert.equal(
+      snapshot.attempts,
+      3
+    );
+
+    assert.equal(
+      snapshot.unavailableReason,
+      null
+    );
+
+    assert.equal(
+      snapshot.holderCountReported,
+      321
+    );
+  }
+);
+
+test(
+  "marks exhausted empty GoPlus records as unavailable",
+  async () => {
+    let requestCount =
+      0;
+
+    const sleepCalls:
+      number[] =
+      [];
+
+    const fetcher:
+      typeof fetch =
+      async () => {
+        requestCount +=
+          1;
+
+        return new Response(
+          JSON.stringify(
+            {
+              code:
+                1,
+
+              message:
+                "OK",
+
+              result: {}
+            }
+          ),
+
+          {
+            status:
+              200,
+
+            headers: {
+              "Content-Type":
+                "application/json"
+            }
+          }
+        );
+      };
+
+    const token:
+      TokenReference = {
+        chainId:
+          "base",
+
+        address:
+          TOKEN_ADDRESS
+      };
+
+    const snapshots =
+      await fetchGoPlusSecuritySnapshots(
+        [
+          token
+        ],
+        {
+          fetch:
+            fetcher,
+
+          requestIntervalMs:
+            13,
+
+          sleep:
+            async (
+              milliseconds
+            ) => {
+              sleepCalls.push(
+                milliseconds
+              );
+            }
+        }
+      );
+
+    const snapshot =
+      snapshots.get(
+        createTokenIdentity(
+          token
+        )
+      );
+
+    assert.ok(snapshot);
+
+    assert.equal(
+      requestCount,
+      3
+    );
+
+    assert.deepEqual(
+      sleepCalls,
+      [
+        13,
+        13
+      ]
+    );
+
+    assert.equal(
+      snapshot.status,
+      "unavailable"
+    );
+
+    assert.equal(
+      snapshot.attempts,
+      3
+    );
+
+    assert.equal(
+      snapshot.unavailableReason,
+      "record-not-returned-after-retries"
+    );
+
+    assert.equal(
+      snapshot.error,
+      null
+    );
+  }
+);
+function createRetryTestDexSnapshots(
+  tokens:
+    TokenReference[]
+): Map<
+  string,
+  TokenDexSnapshot
+> {
+  return new Map(
+    tokens.map(
+      (token) => [
+        createTokenIdentity(
+          token
+        ),
+
+        {
+          provider:
+            "dexscreener",
+
+          status:
+            "no-pairs",
+
+          pools:
+            0,
+
+          poolAddresses:
+            [],
+
+          primaryPair:
+            null,
+
+          totalLiquidityUsd:
+            null,
+
+          volume24hUsd:
+            null,
+
+          buys24h:
+            null,
+
+          sells24h:
+            null,
+
+          priceUsd:
+            null,
+
+          priceChange24hPct:
+            null,
+
+          marketCapUsd:
+            null,
+
+          fdvUsd:
+            null,
+
+          pairCreatedAt:
+            null,
+
+          error:
+            null
+        }
+      ]
+    )
+  );
+}
+
+test(
+  "preserves GoPlus retry metadata through report validation and atomic save",
+  async () => {
+    const directory =
+      await mkdtemp(
+        join(
+          tmpdir(),
+          "clarity-token-retry-metadata-"
+        )
+      );
+
+    const outputPath =
+      join(
+        directory,
+        "bankr-tokens.json"
+      );
+
+    const token:
+      TokenReference = {
+        chainId:
+          "base",
+
+        address:
+          TOKEN_ADDRESS
+      };
+
+    try {
+      const securitySnapshots =
+        await fetchGoPlusSecuritySnapshots(
+          [
+            token
+          ],
+          {
+            fetch:
+              async () =>
+                new Response(
+                  JSON.stringify(
+                    {
+                      code:
+                        1,
+
+                      message:
+                        "OK",
+
+                      result:
+                        {}
+                    }
+                  ),
+
+                  {
+                    status:
+                      200,
+
+                    headers: {
+                      "Content-Type":
+                        "application/json"
+                    }
+                  }
+                ),
+
+            goPlusMaxAttempts:
+              2,
+
+            requestIntervalMs:
+              1,
+
+            sleep:
+              async () =>
+                undefined
+          }
+        );
+
+      const report =
+        await generateTokenIntelligenceReport(
+          createRegistry(),
+          {
+            fetchDex:
+              async (
+                tokens
+              ) =>
+                createRetryTestDexSnapshots(
+                  tokens
+                ),
+
+            fetchSecurity:
+              async () =>
+                securitySnapshots,
+
+            now:
+              () =>
+                "2026-06-30T00:00:00.000Z"
+          }
+        );
+
+      const generatedSecurity =
+        report.tokens[0]
+          ?.security;
+
+      assert.ok(
+        generatedSecurity
+      );
+
+      assert.equal(
+        generatedSecurity.attempts,
+        2
+      );
+
+      assert.equal(
+        generatedSecurity
+          .unavailableReason,
+        "record-not-returned-after-retries"
+      );
+
+      await saveTokenIntelligenceReport(
+        report,
+        outputPath
+      );
+
+      const stored =
+        JSON.parse(
+          await readFile(
+            outputPath,
+            "utf8"
+          )
+        );
+
+      const storedSecurity =
+        stored.tokens?.[0]
+          ?.security;
+
+      assert.equal(
+        storedSecurity?.attempts,
+        2
+      );
+
+      assert.equal(
+        storedSecurity
+          ?.unavailableReason,
+        "record-not-returned-after-retries"
+      );
+    } finally {
+      await rm(
+        directory,
+        {
+          recursive:
+            true,
+
+          force:
+            true
+        }
+      );
+    }
+  }
+);
+
+test(
+  "retries retryable GoPlus HTTP failures",
+  async () => {
+    let requestCount =
+      0;
+
+    const sleepCalls:
+      number[] =
+      [];
+
+    const fetcher:
+      typeof fetch =
+      async () => {
+        requestCount +=
+          1;
+
+        if (
+          requestCount <
+          3
+        ) {
+          return new Response(
+            JSON.stringify(
+              {
+                message:
+                  "Temporary upstream failure"
+              }
+            ),
+
+            {
+              status:
+                503,
+
+              headers: {
+                "Content-Type":
+                  "application/json"
+              }
+            }
+          );
+        }
+
+        return new Response(
+          JSON.stringify(
+            {
+              code:
+                1,
+
+              message:
+                "OK",
+
+              result: {
+                [
+                  TOKEN_ADDRESS
+                    .toLowerCase()
+                ]: {
+                  is_open_source:
+                    "1",
+
+                  is_honeypot:
+                    "0",
+
+                  holder_count:
+                    "500"
+                }
+              }
+            }
+          ),
+
+          {
+            status:
+              200,
+
+            headers: {
+              "Content-Type":
+                "application/json"
+            }
+          }
+        );
+      };
+
+    const token:
+      TokenReference = {
+        chainId:
+          "base",
+
+        address:
+          TOKEN_ADDRESS
+      };
+
+    const snapshots =
+      await fetchGoPlusSecuritySnapshots(
+        [
+          token
+        ],
+        {
+          fetch:
+            fetcher,
+
+          requestIntervalMs:
+            17,
+
+          sleep:
+            async (
+              milliseconds
+            ) => {
+              sleepCalls.push(
+                milliseconds
+              );
+            }
+        }
+      );
+
+    const snapshot =
+      snapshots.get(
+        createTokenIdentity(
+          token
+        )
+      );
+
+    assert.ok(snapshot);
+
+    assert.equal(
+      requestCount,
+      3
+    );
+
+    assert.deepEqual(
+      sleepCalls,
+      [
+        17,
+        17
+      ]
+    );
+
+    assert.equal(
+      snapshot.status,
+      "available"
+    );
+
+    assert.equal(
+      snapshot.attempts,
+      3
+    );
+
+    assert.equal(
+      snapshot.unavailableReason,
+      null
+    );
+  }
+);
+
+test(
+  "does not retry non-retryable GoPlus authentication failures",
+  async () => {
+    let requestCount =
+      0;
+
+    const sleepCalls:
+      number[] =
+      [];
+
+    const fetcher:
+      typeof fetch =
+      async () => {
+        requestCount +=
+          1;
+
+        return new Response(
+          JSON.stringify(
+            {
+              message:
+                "Unauthorized"
+            }
+          ),
+
+          {
+            status:
+              401,
+
+            headers: {
+              "Content-Type":
+                "application/json"
+            }
+          }
+        );
+      };
+
+    const token:
+      TokenReference = {
+        chainId:
+          "base",
+
+        address:
+          TOKEN_ADDRESS
+      };
+
+    const snapshots =
+      await fetchGoPlusSecuritySnapshots(
+        [
+          token
+        ],
+        {
+          fetch:
+            fetcher,
+
+          requestIntervalMs:
+            19,
+
+          sleep:
+            async (
+              milliseconds
+            ) => {
+              sleepCalls.push(
+                milliseconds
+              );
+            }
+        }
+      );
+
+    const snapshot =
+      snapshots.get(
+        createTokenIdentity(
+          token
+        )
+      );
+
+    assert.ok(snapshot);
+
+    assert.equal(
+      requestCount,
+      1
+    );
+
+    assert.deepEqual(
+      sleepCalls,
+      []
+    );
+
+    assert.equal(
+      snapshot.status,
+      "failed"
+    );
+
+    assert.equal(
+      snapshot.attempts,
+      1
+    );
+
+    assert.equal(
+      snapshot.unavailableReason,
+      null
+    );
+
+    assert.equal(
+      snapshot.error
+        ?.retryable,
+      false
+    );
+  }
+);

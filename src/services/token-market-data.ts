@@ -17,6 +17,9 @@ const DEX_BATCH_SIZE =
 const DEFAULT_GO_PLUS_REQUEST_INTERVAL_MS =
   2_100;
 
+const DEFAULT_GO_PLUS_MAX_ATTEMPTS =
+  3;
+
 const EVM_ADDRESS_PATTERN =
   /^0x[a-fA-F0-9]{40}$/u;
 
@@ -98,6 +101,14 @@ export type TokenTopHolder = {
 export type TokenSecuritySnapshot = {
   provider: "goplus";
   status: TokenDataStatus;
+
+  attempts?:
+    number;
+
+  unavailableReason?:
+    | "unsupported-chain"
+    | "record-not-returned-after-retries"
+    | null;
 
   flags: {
     isOpenSource: boolean | null;
@@ -203,6 +214,8 @@ export type TokenMarketClientOptions = {
     milliseconds: number
   ) => Promise<void>;
   requestIntervalMs?: number;
+
+  goPlusMaxAttempts?: number;
 };
 
 export class TokenDataProviderError
@@ -2182,9 +2195,17 @@ export async function fetchGoPlusSecuritySnapshots(
     if (!goPlusChainId) {
       snapshots.set(
         identity,
-        createEmptySecuritySnapshot(
-          "unavailable"
-        )
+        {
+          ...createEmptySecuritySnapshot(
+            "unavailable"
+          ),
+
+          attempts:
+            0,
+
+          unavailableReason:
+            "unsupported-chain"
+        }
       );
 
       continue;
@@ -2236,6 +2257,22 @@ export async function fetchGoPlusSecuritySnapshots(
       DEFAULT_GO_PLUS_URL
     );
 
+  const configuredMaxAttempts =
+    options.goPlusMaxAttempts ??
+    DEFAULT_GO_PLUS_MAX_ATTEMPTS;
+
+  const maxAttempts =
+    Number.isFinite(
+      configuredMaxAttempts
+    )
+      ? Math.max(
+          1,
+          Math.floor(
+            configuredMaxAttempts
+          )
+        )
+      : DEFAULT_GO_PLUS_MAX_ATTEMPTS;
+
   const requestEntries =
     [
       ...requests.values()
@@ -2255,84 +2292,181 @@ export async function fetchGoPlusSecuritySnapshots(
       continue;
     }
 
-    try {
-      const url =
-        new URL(
-          `${baseUrl}/api/v1/token_security/${request.goPlusChainId}`
+    let attempts =
+      0;
+
+    let completed =
+      false;
+
+    while (
+      attempts <
+        maxAttempts &&
+      !completed
+    ) {
+      attempts +=
+        1;
+
+      try {
+        const url =
+          new URL(
+            `${baseUrl}/api/v1/token_security/${request.goPlusChainId}`
+          );
+
+        url.searchParams.set(
+          "contract_addresses",
+          request.address
         );
 
-      url.searchParams.set(
-        "contract_addresses",
-        request.address
-      );
+        const rawResponse =
+          await fetchJson(
+            "goplus",
+            url,
+            options
+          );
 
-      const rawResponse =
-        await fetchJson(
-          "goplus",
-          url,
-          options
-        );
+        const response =
+          GoPlusResponseSchema.parse(
+            rawResponse
+          );
 
-      const response =
-        GoPlusResponseSchema.parse(
-          rawResponse
-        );
-
-      const record =
-        Object
-          .entries(
-            response.result
-          )
-          .find(
-            (
-              [
-                address
-              ]
-            ) =>
-              normalizeAddress(
-                address
-              ) ===
-              request.address
-          )
-          ?.[1];
-
-      const snapshot =
-        record
-          ? normalizeSecuritySnapshot(
-              record
+        const record =
+          Object
+            .entries(
+              response.result
             )
-          : createEmptySecuritySnapshot(
-              "unavailable"
+            .find(
+              (
+                [
+                  address
+                ]
+              ) =>
+                normalizeAddress(
+                  address
+                ) ===
+                request.address
+            )
+            ?.[1];
+
+        if (record) {
+          const snapshot:
+            TokenSecuritySnapshot = {
+            ...normalizeSecuritySnapshot(
+              record
+            ),
+
+            attempts,
+
+            unavailableReason:
+              null
+          };
+
+          for (
+            const identity
+            of request.identities
+          ) {
+            snapshots.set(
+              identity,
+              snapshot
             );
+          }
 
-      for (
-        const identity
-        of request.identities
-      ) {
-        snapshots.set(
-          identity,
-          snapshot
-        );
-      }
-    } catch (error) {
-      const failure =
-        toFailure(
-          error,
-          "goplus"
-        );
+          completed =
+            true;
 
-      for (
-        const identity
-        of request.identities
-      ) {
-        snapshots.set(
-          identity,
+          continue;
+        }
 
-          createEmptySecuritySnapshot(
+        if (
+          attempts <
+          maxAttempts
+        ) {
+          await sleepBetweenRequests(
+            {
+              ...options,
+
+              requestIntervalMs:
+                options.requestIntervalMs ??
+                DEFAULT_GO_PLUS_REQUEST_INTERVAL_MS
+            }
+          );
+
+          continue;
+        }
+
+        const snapshot:
+          TokenSecuritySnapshot = {
+          ...createEmptySecuritySnapshot(
+            "unavailable"
+          ),
+
+          attempts,
+
+          unavailableReason:
+            "record-not-returned-after-retries"
+        };
+
+        for (
+          const identity
+          of request.identities
+        ) {
+          snapshots.set(
+            identity,
+            snapshot
+          );
+        }
+
+        completed =
+          true;
+      } catch (error) {
+        const failure =
+          toFailure(
+            error,
+            "goplus"
+          );
+
+        if (
+          failure.retryable &&
+          attempts <
+            maxAttempts
+        ) {
+          await sleepBetweenRequests(
+            {
+              ...options,
+
+              requestIntervalMs:
+                options.requestIntervalMs ??
+                DEFAULT_GO_PLUS_REQUEST_INTERVAL_MS
+            }
+          );
+
+          continue;
+        }
+
+        const snapshot:
+          TokenSecuritySnapshot = {
+          ...createEmptySecuritySnapshot(
             "failed",
             failure
-          )
-        );
+          ),
+
+          attempts,
+
+          unavailableReason:
+            null
+        };
+
+        for (
+          const identity
+          of request.identities
+        ) {
+          snapshots.set(
+            identity,
+            snapshot
+          );
+        }
+
+        completed =
+          true;
       }
     }
 
